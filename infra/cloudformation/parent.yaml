@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: HeatFX - parent stack (nested data, auth, API, frontend). Package with aws cloudformation package first so nested templates and Lambda land in S3.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Resource name suffix (e.g. dev, prod)
+
+  CognitoDomainPrefix:
+    Type: String
+    Description: Globally unique hosted UI domain prefix (e.g. heatfx-yourname-dev)
+
+  AppCallbackUrls:
+    Type: String
+    Default: 'http://localhost:3000/auth/callback'
+    Description: OAuth callback URLs (comma-separated)
+
+  AppLogoutUrls:
+    Type: String
+    Default: 'http://localhost:3000/'
+    Description: Sign-out URLs (comma-separated)
+
+  CorsAllowOrigin:
+    Type: String
+    Default: '*'
+    Description: API CORS Allow-Origin (use your CloudFront URL in production)
+
+Resources:
+  DataStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/data.yaml
+      Parameters:
+        Environment: !Ref Environment
+      TimeoutInMinutes: 30
+
+  AuthStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/auth.yaml
+      Parameters:
+        Environment: !Ref Environment
+        CognitoDomainPrefix: !Ref CognitoDomainPrefix
+        AppCallbackUrls: !Ref AppCallbackUrls
+        AppLogoutUrls: !Ref AppLogoutUrls
+      TimeoutInMinutes: 30
+
+  ApiStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - DataStack
+      - AuthStack
+    Properties:
+      TemplateURL: nested/api.yaml
+      Parameters:
+        Environment: !Ref Environment
+        UserPoolId: !GetAtt AuthStack.Outputs.UserPoolId
+        UserPoolClientId: !GetAtt AuthStack.Outputs.UserPoolClientId
+        SessionsTableName: !GetAtt DataStack.Outputs.SessionsTableName
+        RecordingsBucketName: !GetAtt DataStack.Outputs.RecordingsBucketName
+        CorsAllowOrigin: !Ref CorsAllowOrigin
+      TimeoutInMinutes: 30
+
+  FrontendStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/frontend.yaml
+      Parameters:
+        Environment: !Ref Environment
+      TimeoutInMinutes: 30
+
+Outputs:
+  RecordingsBucketName:
+    Description: S3 bucket for recording JSON payloads
+    Value: !GetAtt DataStack.Outputs.RecordingsBucketName
+
+  SessionsTableName:
+    Value: !GetAtt DataStack.Outputs.SessionsTableName
+
+  UserPoolId:
+    Value: !GetAtt AuthStack.Outputs.UserPoolId
+
+  UserPoolClientId:
+    Value: !GetAtt AuthStack.Outputs.UserPoolClientId
+
+  CognitoHostedUiDomain:
+    Value: !GetAtt AuthStack.Outputs.CognitoHostedUiDomain
+
+  CognitoIssuerUrl:
+    Value: !GetAtt AuthStack.Outputs.CognitoIssuerUrl
+
+  HttpApiUrl:
+    Description: Public API base URL
+    Value: !GetAtt ApiStack.Outputs.HttpApiUrl
+
+  SiteBucketName:
+    Value: !GetAtt FrontendStack.Outputs.SiteBucketName
+
+  CloudFrontDistributionId:
+    Value: !GetAtt FrontendStack.Outputs.CloudFrontDistributionId
+
+  CloudFrontDomainName:
+    Description: Static site URL (HTTPS)
+    Value: !GetAtt FrontendStack.Outputs.CloudFrontDomainName

@@ -1,0 +1,44 @@
+:root {
+  --bg: #0f0f12;
+  --surface: #1a1a1f;
+  --border: #2a2a32;
+  --text: #e8e8ec;
+  --text-muted: #888;
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --danger: #ef4444;
+  --success: #22c55e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button {
+  cursor: pointer;
+  font: inherit;
+}
+
+a {
+  color: var(--accent);
+}
+
+@keyframes countdown-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  20% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes grid-bg-dots {
+  0% { background-position: 0 0; }
+  100% { background-position: 24px 24px; }
+}

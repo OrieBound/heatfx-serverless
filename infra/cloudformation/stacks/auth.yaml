@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: HeatFX - Cognito User Pool + SPA app client (greenfield)
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+
+  CognitoDomainPrefix:
+    Type: String
+    Description: Globally unique domain prefix for Hosted UI (e.g. heatfx-yourname-dev)
+    AllowedPattern: '^[a-z0-9-]{1,63}$'
+    ConstraintDescription: Lowercase letters, numbers, hyphens only; max 63 chars
+
+  AppCallbackUrls:
+    Type: String
+    Description: OAuth / Hosted UI callback URLs (comma-separated)
+    Default: 'http://localhost:3000/auth/callback'
+
+  AppLogoutUrls:
+    Type: String
+    Description: Sign-out URLs (comma-separated)
+    Default: 'http://localhost:3000/'
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'heatfx-${Environment}-users'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub 'heatfx-${Environment}-web'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs: !Split [',', !Ref AppCallbackUrls]
+      LogoutURLs: !Split [',', !Ref AppLogoutUrls]
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref UserPool
+
+Outputs:
+  UserPoolId:
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+
+  UserPoolArn:
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolArn'
+
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolClientId'
+
+  CognitoHostedUiDomain:
+    Description: Hosted UI / OAuth domain (prefix only; full host is PREFIX.auth.REGION.amazoncognito.com)
+    Value: !Ref CognitoDomainPrefix
+
+  CognitoIssuerUrl:
+    Description: JWT issuer for API authorizer
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
+    Export:
+      Name: !Sub '${AWS::StackName}-CognitoIssuerUrl'

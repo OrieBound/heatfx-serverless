@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: HeatFX - HTTP API + Cognito JWT + Lambda (SAM nested stack)
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 256
+    Runtime: nodejs20.x
+    Architectures:
+      - x86_64
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+  UserPoolId:
+    Type: String
+  UserPoolClientId:
+    Type: String
+  SessionsTableName:
+    Type: String
+  RecordingsBucketName:
+    Type: String
+  CorsAllowOrigin:
+    Type: String
+    Default: '*'
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref CorsAllowOrigin
+        AllowHeaders:
+          - '*'
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        MaxAge: 600
+      Auth:
+        DefaultAuthorizer: CognitoJwt
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}'
+              audience:
+                - !Ref UserPoolClientId
+
+  ApiHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'heatfx-${Environment}-api'
+      Handler: index.handler
+      CodeUri: ../api/src/
+      Environment:
+        Variables:
+          SESSIONS_TABLE_NAME: !Ref SessionsTableName
+          RECORDINGS_BUCKET_NAME: !Ref RecordingsBucketName
+          CORS_ALLOW_ORIGIN: !Ref CorsAllowOrigin
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionsTableName
+        - S3CrudPolicy:
+            BucketName: !Ref RecordingsBucketName
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /health
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        ApiProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/{proxy+}
+            Method: ANY
+
+Outputs:
+  HttpApiUrl:
+    Description: Invoke URL for the HTTP API
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/'
+  HttpApiId:
+    Value: !Ref HttpApi
