@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { CursorColorProvider } from '@/contexts/CursorColorContext';
 import { RecordingSettingsProvider } from '@/contexts/RecordingSettingsContext';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 export const metadata: Metadata = {
   title: 'HeatFX – Mouse heatmap & replay',
@@ -16,9 +17,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <CursorColorProvider>
-          <RecordingSettingsProvider>{children}</RecordingSettingsProvider>
-        </CursorColorProvider>
+        <AuthProvider>
+          <CursorColorProvider>
+            <RecordingSettingsProvider>{children}</RecordingSettingsProvider>
+          </CursorColorProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -106,7 +106,7 @@ export function DetailsTab({ data }: { data: DetailsTabData }) {
     const a = document.createElement('a');
     a.href = url;
     const safeSessionId = data.sessionId.replace(/[^a-zA-Z0-9_-]/g, '');
-    a.download = `heatfx-events-${safeSessionId || 'session'}.csv`;
+    a.download = `heatfx-events-${safeSessionId || 'recording'}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -116,9 +116,9 @@ export function DetailsTab({ data }: { data: DetailsTabData }) {
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 980, margin: '0 auto' }}>
       <section>
-        <h3 style={{ margin: '0 0 12px', fontSize: '1rem', fontWeight: 600 }}>Session</h3>
+        <h3 style={{ margin: '0 0 12px', fontSize: '1rem', fontWeight: 600 }}>Recording</h3>
         <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--text)', fontSize: '0.9rem', lineHeight: 1.8 }}>
-          <li>Session ID: <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: 4 }}>{data.sessionId}</code></li>
+          <li>Recording ID: <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: 4 }}>{data.sessionId}</code></li>
           <li>Duration: {(data.durationMs / 1000).toFixed(2)} s</li>
           <li>Grid: {data.gridWidthPx} × {data.gridHeightPx} px</li>
           <li>Aspect ratio: {data.aspectRatio}</li>

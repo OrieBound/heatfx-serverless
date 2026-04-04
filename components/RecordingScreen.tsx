@@ -10,6 +10,7 @@ import { RecordingEffects } from './RecordingEffects';
 import { RecordingLiveOverlay } from './RecordingLiveOverlay';
 import { RecordingSidebar } from './RecordingSidebar';
 import { useRecordingEvents } from '@/hooks/useRecordingEvents';
+import { AuthButton } from './AuthButton';
 import { useCursorColor } from '@/contexts/CursorColorContext';
 import {
   useRecordingSettings,
@@ -17,7 +18,10 @@ import {
   CURSOR_SIZE_MAX,
   type AnimationTheme,
 } from '@/contexts/RecordingSettingsContext';
+import { useAuth } from '@/contexts/AuthContext';
 import type { RecordedEvent } from '@/types/events';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL!;
 
 export interface SettingSnapshot {
   t: number;
@@ -36,6 +40,13 @@ const THEME_SHORTCUTS: Record<string, AnimationTheme> = {
 };
 
 type Phase = 'idle' | 'recording' | 'paused' | 'completed';
+
+const IDLE_HINTS = [
+  { id: 'click', text: '👆 Click or drag anywhere in the grid' },
+  { id: 'color', text: '🎨 Press ← → to cycle cursor colours' },
+  { id: 'theme', text: '✨ Press 1–5 to switch animation themes' },
+  { id: 'size',  text: '🔍 Scroll the wheel here to resize your cursor' },
+] as const;
 
 interface FinalizedRecording {
   id: string;
@@ -68,6 +79,18 @@ export function RecordingScreen() {
 
   const { color: cursorColor, setColor: setCursorColor, palette } = useCursorColor();
   const { cursorSizePx, setCursorSizePx, animationTheme, setAnimationTheme } = useRecordingSettings();
+  const { user, idToken } = useAuth();
+
+  // Idle hint system
+  const [activeHint, setActiveHint] = useState<string | null>(null);
+  const usedFeaturesRef = useRef(new Set<string>());
+  const idleTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hintIndexRef    = useRef(0);
+  const hintColorRef    = useRef(cursorColor);
+  const hintThemeRef    = useRef(animationTheme);
+  const hintSizeRef     = useRef(cursorSizePx);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const { flush } = useRecordingEvents(
     gridRef,
     frozenGrid,
@@ -137,6 +160,13 @@ export function RecordingScreen() {
     const id = nanoid();
     setSessionId(id);
     setFinalizedRecording(null);
+    // Reset hint tracking
+    usedFeaturesRef.current = new Set();
+    hintIndexRef.current = 0;
+    setActiveHint(null);
+    hintColorRef.current = cursorColor;
+    hintThemeRef.current = animationTheme;
+    hintSizeRef.current  = cursorSizePx;
     if (gridRef.current) {
       const rect = gridRef.current.getBoundingClientRect();
       const dims = { widthPx: Math.round(rect.width), heightPx: Math.round(rect.height) };
@@ -195,6 +225,35 @@ export function RecordingScreen() {
     saveAndNavigateToResults(finalizedRecording.id, finalizedRecording.duration, finalizedRecording.payload);
   }, [finalizedRecording, saveAndNavigateToResults]);
 
+  const saveAndProceed = useCallback(async () => {
+    if (!finalizedRecording || !idToken) return;
+    const dims = frozenGridRef.current;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/sessions`, {
+        method:  'POST',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({
+          gridWidthPx:      dims?.widthPx ?? 0,
+          gridHeightPx:     dims?.heightPx ?? 0,
+          aspectRatio:      '4:3',
+          durationMs:       finalizedRecording.payload.durationMs,
+          eventCounts:      finalizedRecording.payload.eventCounts,
+          events:           finalizedRecording.payload.events,
+          settingSnapshots: finalizedRecording.payload.settingSnapshots,
+        }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      const { sessionId: savedId } = await res.json();
+      saveAndNavigateToResults(savedId, finalizedRecording.duration, finalizedRecording.payload);
+    } catch {
+      setSaveError('Could not save to cloud. You can still view results locally.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [finalizedRecording, idToken, saveAndNavigateToResults]);
+
   const resetToIdle = useCallback(() => {
     setFinalizedRecording(null);
     setSessionId(null);
@@ -252,6 +311,70 @@ export function RecordingScreen() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [phase, stopRecording, setAnimationTheme, palette, cursorColor, setCursorColor]);
 
+  // ── Idle hint: track feature usage ────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'recording' && phase !== 'paused') return;
+    if (cursorColor !== hintColorRef.current) {
+      usedFeaturesRef.current.add('color');
+      setActiveHint(null);
+    }
+  }, [cursorColor, phase]);
+
+  useEffect(() => {
+    if (phase !== 'recording' && phase !== 'paused') return;
+    if (animationTheme !== hintThemeRef.current) {
+      usedFeaturesRef.current.add('theme');
+      setActiveHint(null);
+    }
+  }, [animationTheme, phase]);
+
+  useEffect(() => {
+    if (phase !== 'recording' && phase !== 'paused') return;
+    if (cursorSizePx !== hintSizeRef.current) {
+      usedFeaturesRef.current.add('size');
+      setActiveHint(null);
+    }
+  }, [cursorSizePx, phase]);
+
+  // ── Idle hint: show tip after 2.5 s of no grid activity ──────────────────
+  useEffect(() => {
+    if (phase !== 'recording') {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      setActiveHint(null);
+      return;
+    }
+    const grid = gridRef.current;
+    if (!grid) return;
+
+    const schedule = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => {
+        const pending = IDLE_HINTS.filter(h => !usedFeaturesRef.current.has(h.id));
+        if (!pending.length) return;
+        const hint = pending[hintIndexRef.current % pending.length];
+        hintIndexRef.current++;
+        setActiveHint(hint.text);
+      }, 2500);
+    };
+
+    const onMove  = () => { setActiveHint(null); schedule(); };
+    const onPress = () => {
+      usedFeaturesRef.current.add('click');
+      setActiveHint(null);
+      schedule();
+    };
+
+    grid.addEventListener('pointermove', onMove,  { passive: true });
+    grid.addEventListener('pointerdown', onPress, { passive: true });
+    schedule(); // fire if user does nothing right away
+
+    return () => {
+      grid.removeEventListener('pointermove', onMove);
+      grid.removeEventListener('pointerdown', onPress);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [phase]);
+
   useEffect(() => {
     const gridEl = gridRef.current;
     if (!gridEl) return;
@@ -303,11 +426,27 @@ export function RecordingScreen() {
         overflow: 'hidden',
       }}
     >
-      <header style={{ marginBottom: 16, flexShrink: 0 }}>
-        <h1 style={{ margin: 0, fontSize: '1.5rem' }}>HeatFX</h1>
-        <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Record mouse interactions (up to 30s), then view heatmap &amp; replay.
-        </p>
+      <header style={{ flexShrink: 0 }}>
+        {/* Navbar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '12px 0',
+            marginBottom: 12,
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <h1 style={{ margin: 0, fontSize: '1.65rem', fontWeight: 800, letterSpacing: '-0.02em' }}>HeatFX</h1>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Mouse Heatmap &amp; Replay
+            </span>
+          </div>
+          <AuthButton />
+        </div>
         {phase === 'idle' && (
           <div
             style={{
@@ -347,6 +486,28 @@ export function RecordingScreen() {
                 Click <strong>Stop</strong> when done (or wait 30s), then choose whether to proceed to results.
               </li>
             </ol>
+            <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => window.open('/about', '_blank')}
+                style={{ background: `${cursorColor}14`, border: `1.5px solid ${cursorColor}99`, borderRadius: 8, padding: '9px 18px', font: 'inherit', color: cursorColor, fontWeight: 700, cursor: 'pointer', textAlign: 'left', fontSize: '0.97rem', width: 'fit-content', letterSpacing: '0.01em' }}
+              >
+                📖 View User Guide
+              </button>
+              {!user && (
+                <p style={{ margin: 0, fontSize: '0.83rem', color: 'var(--text-muted)' }}>
+                  💡 <strong style={{ color: 'var(--text)' }}>Free to use</strong> — no account needed.{' '}
+                  <button
+                    type="button"
+                    onClick={() => router.push('/auth/signup')}
+                    style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: cursorColor, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Create a free account
+                  </button>{' '}
+                  to save recordings.
+                </p>
+              )}
+            </div>
           </div>
         )}
         {(phase === 'recording' || phase === 'paused') && (
@@ -472,6 +633,73 @@ export function RecordingScreen() {
                 color={cursorColor}
                 cursorSizePx={cursorSizePx}
               />
+              {phase === 'recording' && activeHint && (
+                activeHint.startsWith('👆') ? (
+                  /* Primary hint — big centred call-out */
+                  <div
+                    key={activeHint}
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      zIndex: 20,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 10,
+                      pointerEvents: 'none',
+                      animation: 'hint-primary-in 0.4s ease forwards',
+                      '--hint-color': cursorColor,
+                    } as React.CSSProperties}
+                  >
+                    <div style={{
+                      fontSize: '2.4rem',
+                      animation: 'hint-bounce 1.2s ease-in-out infinite',
+                    }}>
+                      👇
+                    </div>
+                    <div style={{
+                      padding: '12px 28px',
+                      background: 'color-mix(in srgb, var(--surface) 94%, transparent)',
+                      border: `2px solid ${cursorColor}`,
+                      borderRadius: 14,
+                      fontSize: '1.15rem',
+                      fontWeight: 700,
+                      color: 'var(--text)',
+                      whiteSpace: 'nowrap',
+                      textAlign: 'center',
+                      boxShadow: `0 0 28px ${cursorColor}55`,
+                      animation: 'hint-pulse-ring 2s ease-out infinite',
+                    }}>
+                      Move your mouse into the grid &amp; start clicking!
+                    </div>
+                  </div>
+                ) : (
+                  /* Secondary hints — prominent pill at bottom */
+                  <div
+                    key={activeHint}
+                    style={{
+                      position: 'absolute',
+                      bottom: 22,
+                      left: '50%',
+                      zIndex: 20,
+                      padding: '10px 24px',
+                      background: 'color-mix(in srgb, var(--surface) 93%, transparent)',
+                      border: `1.5px solid ${cursorColor}88`,
+                      borderRadius: 28,
+                      fontSize: '1rem',
+                      color: 'var(--text)',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      pointerEvents: 'none',
+                      animation: 'hint-fade 0.35s ease forwards',
+                      boxShadow: `0 6px 24px ${cursorColor}33`,
+                    }}
+                  >
+                    {activeHint}
+                  </div>
+                )
+              )}
               {phase === 'completed' && finalizedRecording && (
                 <div
                   style={{
@@ -500,23 +728,76 @@ export function RecordingScreen() {
                   >
                     <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Recording is ready</h3>
                     <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.92rem', lineHeight: 1.4 }}>
-                      Your recording has been created ({(finalizedRecording.duration / 1000).toFixed(1)}s, {finalizedRecording.payload.events.length} events).
-                      Would you like to proceed to the results?
+                      {(finalizedRecording.duration / 1000).toFixed(1)}s &middot; {finalizedRecording.payload.events.length} events recorded.
                     </p>
+
+                    {!user && (
+                      <div style={{
+                        padding: '12px 14px',
+                        borderRadius: 8,
+                        background: `${cursorColor}18`,
+                        border: `1px solid ${cursorColor}55`,
+                        fontSize: '0.88rem',
+                        lineHeight: 1.5,
+                        color: 'var(--text)',
+                      }}>
+                        <strong>Want to save this?</strong> Create a free account to save your recordings and access them anytime from any device.
+                      </div>
+                    )}
+
+                    {saveError && (
+                      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--danger)' }}>{saveError}</p>
+                    )}
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {user ? (
+                        <button
+                          type="button"
+                          onClick={saveAndProceed}
+                          disabled={isSaving}
+                          style={{
+                            padding: '9px 14px',
+                            borderRadius: 8,
+                            border: 'none',
+                            background: cursorColor,
+                            color: 'white',
+                            fontWeight: 700,
+                            opacity: isSaving ? 0.7 : 1,
+                            cursor: isSaving ? 'default' : 'pointer',
+                          }}
+                        >
+                          {isSaving ? 'Saving…' : 'Save & view results'}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => router.push('/auth/login')}
+                          style={{
+                            padding: '9px 14px',
+                            borderRadius: 8,
+                            border: 'none',
+                            background: cursorColor,
+                            color: 'white',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Log in to save
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={proceedToResults}
                         style={{
                           padding: '9px 14px',
                           borderRadius: 8,
-                          border: 'none',
-                          background: cursorColor,
-                          color: 'white',
+                          border: `1px solid ${cursorColor}`,
+                          background: 'transparent',
+                          color: cursorColor,
                           fontWeight: 700,
+                          cursor: 'pointer',
                         }}
                       >
-                        Proceed to results
+                        View results (local only)
                       </button>
                       <button
                         type="button"
@@ -528,6 +809,7 @@ export function RecordingScreen() {
                           background: 'transparent',
                           color: 'var(--text)',
                           fontWeight: 600,
+                          cursor: 'pointer',
                         }}
                       >
                         Go back

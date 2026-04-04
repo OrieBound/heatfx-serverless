@@ -45,7 +45,6 @@ Resources:
           - OPTIONS
         MaxAge: 600
       Auth:
-        DefaultAuthorizer: CognitoJwt
         Authorizers:
           CognitoJwt:
             IdentitySource: $request.header.Authorization
@@ -58,18 +57,26 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub 'heatfx-${Environment}-api'
-      Handler: index.handler
-      CodeUri: ../api/src/
+      Handler: src/index.handler
+      CodeUri: ../api/
       Environment:
         Variables:
           SESSIONS_TABLE_NAME: !Ref SessionsTableName
           RECORDINGS_BUCKET_NAME: !Ref RecordingsBucketName
           CORS_ALLOW_ORIGIN: !Ref CorsAllowOrigin
+          USER_POOL_ID: !Ref UserPoolId
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SessionsTableName
         - S3CrudPolicy:
             BucketName: !Ref RecordingsBucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminAddUserToGroup
+                - cognito-idp:AdminRemoveUserFromGroup
+                - cognito-idp:ListUsersInGroup
+              Resource: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}'
       Events:
         Health:
           Type: HttpApi
@@ -77,14 +84,30 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /health
             Method: GET
-            Auth:
-              Authorizer: NONE
-        ApiProxy:
+        ApiGet:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
             Path: /api/{proxy+}
-            Method: ANY
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+        ApiPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/{proxy+}
+            Method: POST
+            Auth:
+              Authorizer: CognitoJwt
+        ApiDelete:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/{proxy+}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoJwt
 
 Outputs:
   HttpApiUrl:

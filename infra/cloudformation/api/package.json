@@ -1,0 +1,13 @@
+{
+  "name": "heatfx-api",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "HeatFX Lambda API handler",
+  "main": "src/index.mjs",
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1024.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/s3-request-presigner": "^3.0.0"
+  }
+}

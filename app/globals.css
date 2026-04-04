@@ -38,6 +38,27 @@ a {
   100% { transform: scale(1); opacity: 1; }
 }
 
+@keyframes hint-fade {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes hint-primary-in {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.88); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes hint-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-8px); }
+}
+
+@keyframes hint-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 var(--hint-color, #818cf8); opacity: 0.8; }
+  70%  { box-shadow: 0 0 0 18px transparent; opacity: 0; }
+  100% { box-shadow: 0 0 0 0 transparent; opacity: 0; }
+}
+
 @keyframes grid-bg-dots {
   0% { background-position: 0 0; }
   100% { background-position: 24px 24px; }

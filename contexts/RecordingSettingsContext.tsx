@@ -22,7 +22,7 @@ const RecordingSettingsContext = createContext<{
 }>({
   cursorSizePx: CURSOR_SIZE_DEFAULT,
   setCursorSizePx: () => {},
-  animationTheme: 'classic',
+  animationTheme: 'neon',
   setAnimationTheme: () => {},
   gridBackground: 'grid',
   setGridBackground: () => {},
@@ -46,7 +46,7 @@ function clampCursorSize(n: number): number {
 
 export function RecordingSettingsProvider({ children }: { children: React.ReactNode }) {
   const [cursorSizePx, setCursorSizePxState] = useState(CURSOR_SIZE_DEFAULT);
-  const [animationTheme, setAnimationThemeState] = useState<AnimationTheme>('classic');
+  const [animationTheme, setAnimationThemeState] = useState<AnimationTheme>('neon');
   const [gridBackground, setGridBackgroundState] = useState<GridBackground>('grid');
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export function RecordingSettingsProvider({ children }: { children: React.ReactN
     );
     setCursorSizePxState(clampCursorSize(stored));
     setAnimationThemeState(
-      getStored<AnimationTheme>('animation-theme', 'classic', (v): v is AnimationTheme =>
+      getStored<AnimationTheme>('animation-theme', 'neon', (v): v is AnimationTheme =>
         ['classic', 'neon', 'party', 'fire', 'ocean'].includes(v as AnimationTheme)
       )
     );
