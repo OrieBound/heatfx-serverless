@@ -96,6 +96,8 @@ function sessionFromItem(item) {
 
 // ── user route handlers ───────────────────────────────────────────────────────
 
+const MAX_RECORDINGS_PER_USER = 20;
+
 async function createSession(event, sub) {
   const claims = getClaims(event);
   let body;
@@ -104,6 +106,24 @@ async function createSession(event, sub) {
 
   const { gridWidthPx, gridHeightPx, aspectRatio, durationMs, eventCounts, events, settingSnapshots } = body;
   if (!events || !Array.isArray(events)) return err(400, 'events array required');
+  const dMs = Number(durationMs);
+  if (!Number.isFinite(dMs) || dMs < 0 || dMs > 120_000) {
+    return err(400, 'durationMs must be between 0 and 120000');
+  }
+
+  // Enforce per-user recording cap
+  const countResult = await dynamo.send(new QueryCommand({
+    TableName:              TABLE,
+    KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+    ExpressionAttributeValues: {
+      ':pk':     { S: `USER#${sub}` },
+      ':prefix': { S: 'SESSION#' },
+    },
+    Select: 'COUNT',
+  }));
+  if ((countResult.Count ?? 0) >= MAX_RECORDINGS_PER_USER) {
+    return err(429, `Recording limit reached (max ${MAX_RECORDINGS_PER_USER}). Please delete an existing recording to save a new one.`);
+  }
 
   const sessionId = randomUUID();
   const createdAt = new Date().toISOString();

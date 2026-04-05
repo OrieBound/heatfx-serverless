@@ -81,7 +81,8 @@ function eventToCsvRow(e: RecordedEvent, index: number): string {
 
 export function DetailsTab({ data }: { data: DetailsTabData }) {
   const counts = data.eventCounts ?? {};
-  const eventTypes = Object.keys(counts).sort();
+  const chaosHits = counts['chaos_hits'] ?? 0;
+  const eventTypes = Object.keys(counts).filter((t) => t !== 'chaos_hits').sort();
   const handleDownloadCsv = () => {
     const header = [
       '#',
@@ -123,6 +124,11 @@ export function DetailsTab({ data }: { data: DetailsTabData }) {
           <li>Grid: {data.gridWidthPx} × {data.gridHeightPx} px</li>
           <li>Aspect ratio: {data.aspectRatio}</li>
           <li>Total events: {data.events?.length ?? 0}</li>
+          {chaosHits > 0 && (
+            <li style={{ color: '#f87171' }}>
+              💥 Chaos hits: <strong>{chaosHits}</strong>
+            </li>
+          )}
         </ul>
       </section>
 

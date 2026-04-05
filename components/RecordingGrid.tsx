@@ -19,7 +19,7 @@ interface RecordingGridProps {
   /** Content to render inside the grid (e.g. cursor overlay). */
   children?: React.ReactNode;
   /** Ref to attach to the grid element for event capture. */
-  gridRef?: React.RefObject<HTMLDivElement | null>;
+  gridRef?: React.RefObject<HTMLDivElement>;
   /** When true, show "Recording area" styling (border + label). */
   isRecording?: boolean;
   /** Accent color for border/label when recording (defaults to CSS var --accent). */
@@ -89,6 +89,8 @@ export function RecordingGrid({
       el.removeEventListener('mousemove', onMove);
       el.removeEventListener('mouseleave', onLeave);
     };
+  // gridRef is a stable ref object — adding it to deps is an anti-pattern
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

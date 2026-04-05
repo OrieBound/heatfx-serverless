@@ -88,9 +88,9 @@ export function HeatmapTab({ events, gridWidthPx, gridHeightPx, accentColor = '#
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const maxM = movementGrid.reduce((m, row) => Math.max(m, ...row), 0) || 1;
-    const maxCL = clickGridLeft.reduce((m, row) => Math.max(m, ...row), 0) || 1;
-    const maxCR = clickGridRight.reduce((m, row) => Math.max(m, ...row), 0) || 1;
+    const maxM = movementGrid.reduce((m, row) => Math.max(m, Math.max.apply(null, row as unknown as number[])), 0) || 1;
+    const maxCL = clickGridLeft.reduce((m, row) => Math.max(m, Math.max.apply(null, row as unknown as number[])), 0) || 1;
+    const maxCR = clickGridRight.reduce((m, row) => Math.max(m, Math.max.apply(null, row as unknown as number[])), 0) || 1;
 
     const canvas = document.createElement('canvas');
     canvas.width = cols;
@@ -159,6 +159,7 @@ export function HeatmapTab({ events, gridWidthPx, gridHeightPx, accentColor = '#
             }}
           >
             {canvasUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={canvasUrl}
               alt="Heatmap"

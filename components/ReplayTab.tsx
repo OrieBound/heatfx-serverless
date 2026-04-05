@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RecordedEvent } from '@/types/events';
-import type { AnimationTheme } from '@/contexts/RecordingSettingsContext';
+import type { AnimationTheme, CursorShape } from '@/contexts/RecordingSettingsContext';
+import { chaosHitTypographyRems } from '@/components/cursorVisualUtils';
 import { useRecordingSettings } from '@/contexts/RecordingSettingsContext';
 import { useCursorColor } from '@/contexts/CursorColorContext';
 import { ReplayEffects } from './ReplayEffects';
-import type { SettingSnapshot } from '@/app/results/page';
+import { ChaosReplayOverlay } from './ChaosOverlay';
+import type { SettingSnapshot, ChaosDensitySnapshot, ChaosHitEvent } from '@/app/results/page';
+import type { ChaosObstacleType } from '@/contexts/RecordingSettingsContext';
 
 function themeStrokeColors(_theme: AnimationTheme, accent: string): { dragStroke: string; clickStroke: string } {
   return { dragStroke: `${accent}cc`, clickStroke: `${accent}dd` };
@@ -17,44 +20,85 @@ interface ReplayTabProps {
   gridWidthPx: number;
   gridHeightPx: number;
   durationMs: number;
+  sessionId?: string;
   /** When present, replay uses these so animation matches what the user saw at each time. */
   settingSnapshots?: SettingSnapshot[];
+  chaosModeSettings?: { obstacleType: string; density: number } | null;
+  chaosDensitySnapshots?: ChaosDensitySnapshot[];
+  chaosHits?: ChaosHitEvent[];
 }
 
 const SPEEDS = [0.5, 1, 1.5, 2] as const;
+
+function octagonPoints(cx: number, cy: number, R: number): string {
+  const pts: string[] = [];
+  for (let k = 0; k < 8; k++) {
+    const a = -Math.PI / 2 + Math.PI / 8 + (k * Math.PI) / 4;
+    pts.push(`${cx + R * Math.cos(a)},${cy + R * Math.sin(a)}`);
+  }
+  return pts.join(' ');
+}
+
+function ReplayCursorShape({ cx, cy, r, color, shape }: { cx: number; cy: number; r: number; color: string; shape: string }) {
+  switch (shape) {
+    case 'square':
+      return <rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} fill={color} rx={2} />;
+    case 'plus':
+      return (
+        <g>
+          <rect x={cx - r * 0.3} y={cy - r} width={r * 0.6} height={r * 2} fill={color} />
+          <rect x={cx - r} y={cy - r * 0.3} width={r * 2} height={r * 0.6} fill={color} />
+        </g>
+      );
+    case 'diamond':
+      return <polygon points={`${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`} fill={color} />;
+    case 'octagon':
+    case 'ring':
+      return <polygon points={octagonPoints(cx, cy, r)} fill={color} />;
+    case 'triangle':
+      return <polygon points={`${cx},${cy - r} ${cx - r},${cy + r} ${cx + r},${cy + r}`} fill={color} />;
+    case 'circle':
+    default:
+      return <circle cx={cx} cy={cy} r={r} fill={color} />;
+  }
+}
 /** Match RecordingLiveOverlay: drag rects fade after this many ms */
 const DRAG_FADE_MS = 550;
 
 function getEffectiveSettings(
   currentTimeMs: number,
   snapshots: SettingSnapshot[] | undefined,
-  fallback: { cursorColor: string; animationTheme: AnimationTheme; cursorSizePx: number }
-): { cursorColor: string; animationTheme: AnimationTheme; cursorSizePx: number } {
+  fallback: { cursorColor: string; animationTheme: AnimationTheme; cursorSizePx: number; cursorShape: string }
+): { cursorColor: string; animationTheme: AnimationTheme; cursorSizePx: number; cursorShape: string } {
   if (!snapshots?.length) return fallback;
   let best = snapshots[0];
   for (let i = 0; i < snapshots.length; i++) {
     if (snapshots[i].t <= currentTimeMs) best = snapshots[i];
     else break;
   }
+  const rawShape = best.cursorShape ?? fallback.cursorShape;
+  const cursorShapeNorm = rawShape === 'ring' ? 'octagon' : rawShape;
   return {
     cursorColor: best.cursorColor,
     animationTheme: best.animationTheme as AnimationTheme,
     cursorSizePx: best.cursorSizePx,
+    cursorShape: cursorShapeNorm,
   };
 }
 
-export function ReplayTab({ events, gridWidthPx, gridHeightPx, durationMs, settingSnapshots }: ReplayTabProps) {
+export function ReplayTab({ events, gridWidthPx, gridHeightPx, durationMs, sessionId, settingSnapshots, chaosModeSettings, chaosDensitySnapshots, chaosHits }: ReplayTabProps) {
   const { color: contextColor } = useCursorColor();
-  const { cursorSizePx: contextSize, animationTheme: contextTheme } = useRecordingSettings();
-  const fallback = { cursorColor: contextColor, animationTheme: contextTheme, cursorSizePx: contextSize };
+  const { cursorSizePx: contextSize, animationTheme: contextTheme, cursorShape: contextShape } = useRecordingSettings();
+  const fallback = { cursorColor: contextColor, animationTheme: contextTheme, cursorSizePx: contextSize, cursorShape: contextShape };
   const [playing, setPlaying] = useState(false);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
-  const { cursorColor, animationTheme, cursorSizePx } = getEffectiveSettings(currentTimeMs, settingSnapshots, fallback);
+  const { cursorColor, animationTheme, cursorSizePx, cursorShape } = getEffectiveSettings(currentTimeMs, settingSnapshots, fallback);
   const [speed, setSpeed] = useState(1);
   const [showCursor, setShowCursor] = useState(true);
   const [showDragRects, setShowDragRects] = useState(true);
   const [showClickMarkers, setShowClickMarkers] = useState(true);
   const [showEffects, setShowEffects] = useState(true);
+  const [showChaos, setShowChaos] = useState(true);
   const startTimeRef = useRef<number>(0);
   const rafRef = useRef<number>(0);
 
@@ -62,6 +106,9 @@ export function ReplayTab({ events, gridWidthPx, gridHeightPx, durationMs, setti
   const displayHeight = Math.round((displayWidth * gridHeightPx) / gridWidthPx);
   const scaleX = displayWidth;
   const scaleY = displayHeight;
+  const cursorDisplayScale = displayWidth / Math.max(1, gridWidthPx);
+  const effectiveCursorPx = cursorSizePx * cursorDisplayScale;
+  const hitTy = chaosHitTypographyRems(effectiveCursorPx);
 
   const currentEventIndex = events.findIndex((e) => e.t > currentTimeMs);
   const visibleIndex = currentEventIndex < 0 ? events.length - 1 : Math.max(0, currentEventIndex - 1);
@@ -85,6 +132,8 @@ export function ReplayTab({ events, gridWidthPx, gridHeightPx, durationMs, setti
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
+  // currentTimeMs is intentionally omitted — adding it would restart the RAF loop every frame
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, speed, durationMs]);
 
   const seek = useCallback((pct: number) => {
@@ -134,8 +183,54 @@ export function ReplayTab({ events, gridWidthPx, gridHeightPx, durationMs, setti
             width={displayWidth}
             height={displayHeight}
             cursorSizePx={cursorSizePx}
+            cursorShape={cursorShape as CursorShape}
           />
         )}
+        {chaosModeSettings && sessionId && showChaos && (
+          <ChaosReplayOverlay
+            sessionId={sessionId}
+            currentTimeMs={currentTimeMs}
+            gridWidthPx={displayWidth}
+            gridHeightPx={displayHeight}
+            obstacleType={chaosModeSettings.obstacleType as ChaosObstacleType}
+            density={chaosModeSettings.density}
+            accentColor={cursorColor}
+            chaosDensitySnapshots={chaosDensitySnapshots}
+          />
+        )}
+        {/* Chaos hit markers */}
+        {showChaos && chaosHits?.filter((h) => currentTimeMs >= h.t && currentTimeMs < h.t + 700).map((h, i) => {
+          const age = currentTimeMs - h.t;
+          const progress = age / 700;
+          return (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                left: h.normX * displayWidth,
+                top: h.normY * displayHeight,
+                transform: `translate(-50%, ${-120 - progress * 60}%) scale(${1.2 - progress * 0.4})`,
+                opacity: 1 - progress,
+                pointerEvents: 'none',
+                zIndex: 20,
+                userSelect: 'none',
+                textAlign: 'center',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <div style={{ fontSize: `${hitTy.emojiRem}rem`, filter: 'drop-shadow(0 0 8px #ff4444)', lineHeight: 1 }}>💥</div>
+              <div style={{
+                fontSize: `${hitTy.powRem}rem`,
+                fontWeight: 800,
+                color: '#ff4444',
+                textShadow: '0 0 6px #ff000088',
+                marginTop: 2,
+              }}>
+                POW!
+              </div>
+            </div>
+          );
+        })}
         <svg
           width={displayWidth}
           height={displayHeight}
@@ -165,14 +260,15 @@ export function ReplayTab({ events, gridWidthPx, gridHeightPx, durationMs, setti
                 cx={currentPos.x}
                 cy={currentPos.y}
                 r={cursorSizePx}
-                fill={cursorColor + '66'}
+                fill={cursorColor + '44'}
                 style={{ filter: 'blur(4px)' }}
               />
-              <circle
+              <ReplayCursorShape
                 cx={currentPos.x}
                 cy={currentPos.y}
                 r={cursorSizePx / 2}
-                fill={cursorColor}
+                color={cursorColor}
+                shape={cursorShape}
               />
             </>
           )}
@@ -218,10 +314,16 @@ export function ReplayTab({ events, gridWidthPx, gridHeightPx, durationMs, setti
             <input type="checkbox" checked={showClickMarkers} onChange={(e) => setShowClickMarkers(e.target.checked)} style={{ accentColor: cursorColor }} />
             Click markers
           </label>
-          <label style={{ ...toggleLabelStyle, marginBottom: 0, padding: '6px 10px', borderRadius: 8, background: showEffects ? `${cursorColor}18` : 'transparent' }}>
+          <label style={{ ...toggleLabelStyle, marginBottom: chaosModeSettings ? 10 : 0, padding: '6px 10px', borderRadius: 8, background: showEffects ? `${cursorColor}18` : 'transparent' }}>
             <input type="checkbox" checked={showEffects} onChange={(e) => setShowEffects(e.target.checked)} style={{ accentColor: cursorColor }} />
             Trail & effects
           </label>
+          {chaosModeSettings && (
+            <label style={{ ...toggleLabelStyle, marginBottom: 0, padding: '6px 10px', borderRadius: 8, background: showChaos ? '#ef444422' : 'transparent' }}>
+              <input type="checkbox" checked={showChaos} onChange={(e) => setShowChaos(e.target.checked)} style={{ accentColor: '#f87171' }} />
+              <span style={{ color: showChaos ? '#f87171' : 'var(--text-muted)' }}>💥 Chaos layer</span>
+            </label>
+          )}
         </div>
       </div>
       <div

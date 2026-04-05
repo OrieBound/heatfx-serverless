@@ -12,6 +12,22 @@ const PALETTE = [
   '#f97316', // orange
   '#ef4444', // red
   '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#a855f7', // purple
+  '#eab308', // yellow
+  '#14b8a6', // teal
+  '#f43f5e', // rose
+  '#84cc16', // lime
+  '#ffffff', // white
+  '#0ea5e9', // sky blue
+  '#7c3aed', // violet
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#fb923c', // coral
+  '#e879f9', // fuchsia
+  '#4ade80', // light green
+  '#38bdf8', // light blue
+  '#fbbf24', // golden yellow
 ] as const;
 
 const CursorColorContext = createContext<{

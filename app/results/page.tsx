@@ -17,6 +17,18 @@ export interface SettingSnapshot {
   cursorColor: string;
   animationTheme: string;
   cursorSizePx: number;
+  cursorShape?: string;
+}
+
+export interface ChaosDensitySnapshot {
+  t: number;
+  density: number;
+}
+
+export interface ChaosHitEvent {
+  t: number;
+  normX: number;
+  normY: number;
 }
 
 export interface StoredResult {
@@ -28,6 +40,9 @@ export interface StoredResult {
   eventCounts: Record<string, number>;
   events: RecordedEvent[];
   settingSnapshots?: SettingSnapshot[];
+  chaosModeSettings?: { obstacleType: string; density: number } | null;
+  chaosDensitySnapshots?: ChaosDensitySnapshot[];
+  chaosHits?: ChaosHitEvent[];
 }
 
 type Tab = 'heatmap' | 'replay' | 'details';
@@ -187,7 +202,11 @@ function ResultsContent() {
               gridWidthPx={data.gridWidthPx}
               gridHeightPx={data.gridHeightPx}
               durationMs={data.durationMs}
+              sessionId={data.sessionId}
               settingSnapshots={data.settingSnapshots}
+              chaosModeSettings={data.chaosModeSettings}
+              chaosDensitySnapshots={data.chaosDensitySnapshots}
+              chaosHits={data.chaosHits}
             />
           )}
           {tab === 'details' && data && <DetailsTab data={data} />}

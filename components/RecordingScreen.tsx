@@ -9,6 +9,8 @@ import { StartInGridOverlay } from './StartInGridOverlay';
 import { RecordingEffects } from './RecordingEffects';
 import { RecordingLiveOverlay } from './RecordingLiveOverlay';
 import { RecordingSidebar } from './RecordingSidebar';
+import { ChaosOverlay } from './ChaosOverlay';
+import { chaosHitTypographyRems } from '@/components/cursorVisualUtils';
 import { useRecordingEvents } from '@/hooks/useRecordingEvents';
 import { AuthButton } from './AuthButton';
 import { useCursorColor } from '@/contexts/CursorColorContext';
@@ -16,7 +18,13 @@ import {
   useRecordingSettings,
   CURSOR_SIZE_MIN,
   CURSOR_SIZE_MAX,
+  CHAOS_DENSITY_MIN,
+  CHAOS_DENSITY_MAX,
+  RECORDING_DURATION_FREE_MS,
   type AnimationTheme,
+  type ChaosObstacleType,
+  type CursorShape,
+  type GridBackground,
 } from '@/contexts/RecordingSettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 import type { RecordedEvent } from '@/types/events';
@@ -28,23 +36,60 @@ export interface SettingSnapshot {
   cursorColor: string;
   animationTheme: AnimationTheme;
   cursorSizePx: number;
+  cursorShape: CursorShape;
 }
 
-const MAX_DURATION_MS = 30_000;
+export interface ChaosDensitySnapshot {
+  t: number;
+  density: number;
+}
+
+export interface ChaosHitEvent {
+  t: number;
+  normX: number;
+  normY: number;
+}
+
+const SHAPE_SHORTCUTS: Record<string, CursorShape> = {
+  Digit1: 'circle',
+  Digit2: 'square',
+  Digit3: 'plus',
+  Digit4: 'diamond',
+  Digit5: 'octagon',
+  Digit6: 'triangle',
+};
+
 const THEME_SHORTCUTS: Record<string, AnimationTheme> = {
-  Digit1: 'classic',
-  Digit2: 'neon',
-  Digit3: 'party',
-  Digit4: 'fire',
-  Digit5: 'ocean',
+  KeyQ: 'classic',
+  KeyW: 'neon',
+  KeyE: 'party',
+  KeyR: 'fire',
+  KeyT: 'ocean',
+  KeyY: 'cosmic',
+};
+
+const CHAOS_SHORTCUTS: Record<string, ChaosObstacleType> = {
+  KeyA: 'none',
+  KeyS: 'dots',
+  KeyD: 'rocks',
+  KeyF: 'snowflakes',
+  KeyG: 'stars',
+  KeyH: 'rings',
+};
+
+const BACKGROUND_SHORTCUTS: Record<string, GridBackground> = {
+  KeyZ: 'none',
+  KeyX: 'dots',
+  KeyC: 'grid',
 };
 
 type Phase = 'idle' | 'recording' | 'paused' | 'completed';
 
 const IDLE_HINTS = [
   { id: 'click', text: '👆 Click or drag anywhere in the grid' },
-  { id: 'color', text: '🎨 Press ← → to cycle cursor colours' },
-  { id: 'theme', text: '✨ Press 1–5 to switch animation themes' },
+  { id: 'color', text: '🎨 Press ← → on your keyboard (arrow keys) to cycle cursor colours' },
+  { id: 'shape', text: '🔷 Press 1–6 to change cursor shape' },
+  { id: 'theme', text: '✨ Press Q–Y to switch cursor theme' },
   { id: 'size',  text: '🔍 Scroll the wheel here to resize your cursor' },
 ] as const;
 
@@ -56,6 +101,8 @@ interface FinalizedRecording {
     eventCounts: Record<string, number>;
     durationMs: number;
     settingSnapshots: SettingSnapshot[];
+    chaosDensitySnapshots: ChaosDensitySnapshot[];
+    chaosHits: ChaosHitEvent[];
   };
 }
 
@@ -71,15 +118,34 @@ export function RecordingScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
   const accumulatedMsRef = useRef<number>(0);
-  const storedEventsRef = useRef<{ events: RecordedEvent[]; eventCounts: Record<string, number>; durationMs?: number } | null>(null);
+  const storedEventsRef = useRef<{ events: RecordedEvent[]; eventCounts: Record<string, number>; durationMs?: number; chaosDensitySnapshots: ChaosDensitySnapshot[]; chaosHits: ChaosHitEvent[] } | null>(null);
   const settingSnapshotsRef = useRef<SettingSnapshot[]>([]);
   const frozenGridRef = useRef<GridDimensions | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   sessionIdRef.current = sessionId;
+  /** Cap for the current (or next) recording; set synchronously when starting. */
+  const sessionCapMsRef = useRef(RECORDING_DURATION_FREE_MS);
 
   const { color: cursorColor, setColor: setCursorColor, palette } = useCursorColor();
-  const { cursorSizePx, setCursorSizePx, animationTheme, setAnimationTheme } = useRecordingSettings();
+  const {
+    cursorSizePx, setCursorSizePx,
+    animationTheme, setAnimationTheme,
+    cursorShape, setCursorShape,
+    chaosObstacleType, chaosDensity, setChaosObstacleType, setChaosDensity,
+    setGridBackground,
+    recordingDurationMs,
+  } = useRecordingSettings();
+  const chaosActive = chaosObstacleType !== 'none';
   const { user, idToken } = useAuth();
+  const nextRecordingCapMs = user ? recordingDurationMs : RECORDING_DURATION_FREE_MS;
+
+  // Chaos mode hit tracking
+  const chaosHitCountRef        = useRef(0);
+  const chaosHitsRef            = useRef<ChaosHitEvent[]>([]);
+  const chaosDensitySnapshotsRef = useRef<ChaosDensitySnapshot[]>([]);
+  const [hitFlash, setHitFlash] = useState<{ x: number; y: number } | null>(null);
+  const hitFlashTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chaosSnapshotRef        = useRef<{ obstacleType: string; density: number } | null>(null);
 
   // Idle hint system
   const [activeHint, setActiveHint] = useState<string | null>(null);
@@ -116,6 +182,8 @@ export function RecordingScreen() {
         eventCounts: Record<string, number>;
         durationMs: number;
         settingSnapshots: SettingSnapshot[];
+        chaosDensitySnapshots: ChaosDensitySnapshot[];
+        chaosHits: ChaosHitEvent[];
       }
     ) => {
       const dims = frozenGridRef.current;
@@ -131,6 +199,9 @@ export function RecordingScreen() {
             eventCounts: payload.eventCounts,
             events: payload.events,
             settingSnapshots: payload.settingSnapshots,
+            chaosModeSettings: chaosSnapshotRef.current,
+            chaosDensitySnapshots: payload.chaosDensitySnapshots,
+            chaosHits: payload.chaosHits,
           })
         );
       } catch (_) {}
@@ -144,8 +215,13 @@ export function RecordingScreen() {
       const events = flushRef.current();
       const eventCounts: Record<string, number> = {};
       for (const e of events) eventCounts[e.type] = (eventCounts[e.type] ?? 0) + 1;
+      if (chaosHitCountRef.current > 0) {
+        eventCounts['chaos_hits'] = chaosHitCountRef.current;
+      }
       const settingSnapshots = [...settingSnapshotsRef.current];
-      const payload = { events, eventCounts, durationMs: duration, settingSnapshots };
+      const chaosDensitySnapshots = [...chaosDensitySnapshotsRef.current];
+      const chaosHits = [...chaosHitsRef.current];
+      const payload = { events, eventCounts, durationMs: duration, settingSnapshots, chaosDensitySnapshots, chaosHits };
       storedEventsRef.current = payload;
       setElapsedMs(duration);
       const id = sessionIdRef.current;
@@ -160,6 +236,13 @@ export function RecordingScreen() {
     const id = nanoid();
     setSessionId(id);
     setFinalizedRecording(null);
+    chaosHitCountRef.current = 0;
+    chaosHitsRef.current = [];
+    chaosDensitySnapshotsRef.current = chaosActive ? [{ t: 0, density: chaosDensity }] : [];
+    setHitFlash(null);
+    chaosSnapshotRef.current = chaosActive ? { obstacleType: chaosObstacleType, density: chaosDensity } : null;
+    const cap = user ? recordingDurationMs : RECORDING_DURATION_FREE_MS;
+    sessionCapMsRef.current = cap;
     // Reset hint tracking
     usedFeaturesRef.current = new Set();
     hintIndexRef.current = 0;
@@ -178,16 +261,18 @@ export function RecordingScreen() {
     accumulatedMsRef.current = 0;
     startTimeRef.current = Date.now();
     storedEventsRef.current = null;
-    settingSnapshotsRef.current = [{ t: 0, cursorColor, animationTheme, cursorSizePx }];
+    settingSnapshotsRef.current = [{ t: 0, cursorColor, animationTheme, cursorSizePx, cursorShape }];
     timerRef.current = setInterval(() => {
       const elapsed = accumulatedMsRef.current + (Date.now() - startTimeRef.current);
       setElapsedMs(elapsed);
-      if (elapsed >= MAX_DURATION_MS) {
+      const maxMs = sessionCapMsRef.current;
+      if (elapsed >= maxMs) {
         stopTimer();
-        finishRecording(MAX_DURATION_MS);
+        finishRecording(maxMs);
       }
     }, 100);
-  }, [stopTimer, finishRecording, cursorColor, animationTheme, cursorSizePx]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stopTimer, finishRecording, cursorColor, animationTheme, cursorSizePx, cursorShape, chaosActive, chaosObstacleType, chaosDensity, user, recordingDurationMs]);
 
   const pauseRecording = useCallback(() => {
     if (phase !== 'recording') return;
@@ -203,9 +288,10 @@ export function RecordingScreen() {
     timerRef.current = setInterval(() => {
       const elapsed = accumulatedMsRef.current + (Date.now() - startTimeRef.current);
       setElapsedMs(elapsed);
-      if (elapsed >= MAX_DURATION_MS) {
+      const maxMs = sessionCapMsRef.current;
+      if (elapsed >= maxMs) {
         stopTimer();
-        finishRecording(MAX_DURATION_MS);
+        finishRecording(maxMs);
       }
     }, 100);
   }, [phase, stopTimer, finishRecording]);
@@ -216,7 +302,7 @@ export function RecordingScreen() {
       phase === 'paused'
         ? accumulatedMsRef.current
         : accumulatedMsRef.current + (Date.now() - startTimeRef.current);
-    const duration = Math.min(elapsed, MAX_DURATION_MS);
+    const duration = Math.min(elapsed, sessionCapMsRef.current);
     finishRecording(duration);
   }, [stopTimer, phase, finishRecording]);
 
@@ -242,6 +328,8 @@ export function RecordingScreen() {
           eventCounts:      finalizedRecording.payload.eventCounts,
           events:           finalizedRecording.payload.events,
           settingSnapshots: finalizedRecording.payload.settingSnapshots,
+          chaosDensitySnapshots: finalizedRecording.payload.chaosDensitySnapshots,
+          chaosHits: finalizedRecording.payload.chaosHits,
         }),
       });
       if (!res.ok) throw new Error('Save failed');
@@ -261,6 +349,8 @@ export function RecordingScreen() {
     setFrozenGrid(null);
     frozenGridRef.current = null;
     settingSnapshotsRef.current = [];
+    chaosDensitySnapshotsRef.current = [];
+    chaosHitsRef.current = [];
     accumulatedMsRef.current = 0;
     startTimeRef.current = 0;
     setElapsedMs(0);
@@ -280,10 +370,24 @@ export function RecordingScreen() {
         return;
       }
 
+      const shape = SHAPE_SHORTCUTS[event.code];
+      if (shape) {
+        event.preventDefault();
+        setCursorShape(shape);
+        return;
+      }
+
       const theme = THEME_SHORTCUTS[event.code];
       if (theme) {
         event.preventDefault();
         setAnimationTheme(theme);
+        return;
+      }
+
+      const chaosType = CHAOS_SHORTCUTS[event.code];
+      if (chaosType !== undefined) {
+        event.preventDefault();
+        setChaosObstacleType(chaosType);
         return;
       }
 
@@ -301,6 +405,21 @@ export function RecordingScreen() {
         return;
       }
 
+      if (event.code === 'ArrowUp' || event.code === 'ArrowDown') {
+        if (!chaosActive) return;
+        event.preventDefault();
+        const delta = event.code === 'ArrowUp' ? 1 : -1;
+        setChaosDensity(Math.max(CHAOS_DENSITY_MIN, Math.min(CHAOS_DENSITY_MAX, chaosDensity + delta)));
+        return;
+      }
+
+      const bg = BACKGROUND_SHORTCUTS[event.code];
+      if (bg !== undefined) {
+        event.preventDefault();
+        setGridBackground(bg);
+        return;
+      }
+
       if (phase !== 'recording' && phase !== 'paused') return;
       if (event.code !== 'Space') return;
       event.preventDefault();
@@ -309,7 +428,7 @@ export function RecordingScreen() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [phase, stopRecording, setAnimationTheme, palette, cursorColor, setCursorColor]);
+  }, [phase, stopRecording, setCursorShape, setAnimationTheme, setChaosObstacleType, setChaosDensity, setGridBackground, chaosActive, chaosDensity, palette, cursorColor, setCursorColor]);
 
   // ── Idle hint: track feature usage ────────────────────────────────────────
   useEffect(() => {
@@ -390,7 +509,20 @@ export function RecordingScreen() {
     return () => gridEl.removeEventListener('wheel', onWheel);
   }, [cursorSizePx, setCursorSizePx]);
 
-  const lastSettingsRef = useRef<{ cursorColor: string; animationTheme: AnimationTheme; cursorSizePx: number } | null>(null);
+  // Track chaos density changes during recording
+  useEffect(() => {
+    if (phase !== 'recording' && phase !== 'paused') return;
+    if (!chaosActive) return;
+    const t = phase === 'paused'
+      ? accumulatedMsRef.current
+      : accumulatedMsRef.current + (Date.now() - startTimeRef.current);
+    const snaps = chaosDensitySnapshotsRef.current;
+    if (snaps.length > 0 && snaps[snaps.length - 1].density === chaosDensity) return;
+    snaps.push({ t, density: chaosDensity });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaosDensity, phase, chaosActive]);
+
+  const lastSettingsRef = useRef<{ cursorColor: string; animationTheme: AnimationTheme; cursorSizePx: number; cursorShape: CursorShape } | null>(null);
   useEffect(() => {
     if (phase !== 'recording' && phase !== 'paused') {
       lastSettingsRef.current = null;
@@ -400,26 +532,77 @@ export function RecordingScreen() {
       phase === 'paused'
         ? accumulatedMsRef.current
         : accumulatedMsRef.current + (Date.now() - startTimeRef.current);
-    const current = { cursorColor, animationTheme, cursorSizePx };
+    const current = { cursorColor, animationTheme, cursorSizePx, cursorShape };
     const last = lastSettingsRef.current;
     if (!last) {
       lastSettingsRef.current = current;
       return;
     }
-    if (last.cursorColor === current.cursorColor && last.animationTheme === current.animationTheme && last.cursorSizePx === current.cursorSizePx) return;
+    if (
+      last.cursorColor === current.cursorColor &&
+      last.animationTheme === current.animationTheme &&
+      last.cursorSizePx === current.cursorSizePx &&
+      last.cursorShape === current.cursorShape
+    ) return;
     lastSettingsRef.current = current;
     settingSnapshotsRef.current.push({ t, ...current });
-  }, [phase, cursorColor, animationTheme, cursorSizePx]);
+  }, [phase, cursorColor, animationTheme, cursorSizePx, cursorShape]);
 
-  const remainingMs = Math.max(0, MAX_DURATION_MS - elapsedMs);
+  const chaosHitTy = chaosHitTypographyRems(cursorSizePx);
+  const capMs =
+    phase === 'recording' || phase === 'paused' || phase === 'completed'
+      ? sessionCapMsRef.current
+      : nextRecordingCapMs;
+  const remainingMs = Math.max(0, capMs - elapsedMs);
   const finalCountdownNumber = phase === 'recording' && remainingMs > 0 && remainingMs <= 5_000
     ? Math.ceil(remainingMs / 1_000)
     : null;
 
+  // ── Grid flash overlays ───────────────────────────────────────────────────
+  const [showGo, setShowGo] = useState(false);
+  const [milestoneText, setMilestoneText] = useState<string | null>(null);
+  const shownMilestonesRef = useRef(new Set<number>());
+  const goTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const milestoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // "GO!" flash when recording starts
+  useEffect(() => {
+    if (phase === 'recording' && elapsedMs < 500) {
+      // Reset milestones for a fresh recording
+      shownMilestonesRef.current = new Set();
+      if (goTimerRef.current) clearTimeout(goTimerRef.current);
+      goTimerRef.current = setTimeout(() => {
+        setShowGo(true);
+        goTimerRef.current = setTimeout(() => setShowGo(false), 1200);
+      }, 700);
+    }
+    if (phase !== 'recording') {
+      setShowGo(false);
+      setMilestoneText(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  // Milestone banners: only "20" and "10" (seconds left) — not every 10s interval for the whole length
+  useEffect(() => {
+    if (phase !== 'recording') return;
+    const rem = Math.max(0, sessionCapMsRef.current - elapsedMs);
+    const secRem = Math.ceil(rem / 1000);
+    const fire = (secondsLeft: number, label: string) => {
+      if (secRem !== secondsLeft || shownMilestonesRef.current.has(secondsLeft)) return;
+      shownMilestonesRef.current.add(secondsLeft);
+      if (milestoneTimerRef.current) clearTimeout(milestoneTimerRef.current);
+      setMilestoneText(label);
+      milestoneTimerRef.current = setTimeout(() => setMilestoneText(null), 1800);
+    };
+    fire(20, '20');
+    fire(10, '10');
+  }, [elapsedMs, phase]);
+
   return (
     <div
       style={{
-        height: '100vh',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         padding: '16px 24px',
@@ -427,26 +610,6 @@ export function RecordingScreen() {
       }}
     >
       <header style={{ flexShrink: 0 }}>
-        {/* Navbar */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            padding: '12px 0',
-            marginBottom: 12,
-            borderBottom: '1px solid var(--border)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <h1 style={{ margin: 0, fontSize: '1.65rem', fontWeight: 800, letterSpacing: '-0.02em' }}>HeatFX</h1>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Mouse Heatmap &amp; Replay
-            </span>
-          </div>
-          <AuthButton />
-        </div>
         {phase === 'idle' && (
           <div
             style={{
@@ -483,17 +646,33 @@ export function RecordingScreen() {
               </li>
               <li><strong>Move and click</strong> inside the dark box (left or right click, or drag).</li>
               <li>
-                Click <strong>Stop</strong> when done (or wait 30s), then choose whether to proceed to results.
+                Click <strong>Stop</strong> when done (or wait for the timer), then choose whether to proceed to results.
               </li>
             </ol>
             <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <button
-                type="button"
-                onClick={() => window.open('/about', '_blank')}
-                style={{ background: `${cursorColor}14`, border: `1.5px solid ${cursorColor}99`, borderRadius: 8, padding: '9px 18px', font: 'inherit', color: cursorColor, fontWeight: 700, cursor: 'pointer', textAlign: 'left', fontSize: '0.97rem', width: 'fit-content', letterSpacing: '0.01em' }}
-              >
-                📖 View User Guide
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => window.open('/about', '_blank')}
+                  style={{ background: `${cursorColor}14`, border: `1.5px solid ${cursorColor}99`, borderRadius: 8, padding: '9px 18px', font: 'inherit', color: cursorColor, fontWeight: 700, cursor: 'pointer', fontSize: '0.97rem', letterSpacing: '0.01em' }}
+                >
+                  📖 User Guide
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.open('/stack', '_blank')}
+                  style={{ background: `${cursorColor}14`, border: `1.5px solid ${cursorColor}99`, borderRadius: 8, padding: '9px 18px', font: 'inherit', color: cursorColor, fontWeight: 700, cursor: 'pointer', fontSize: '0.97rem', letterSpacing: '0.01em' }}
+                >
+                  🏗️ How It&#39;s Built
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.open('/why', '_blank')}
+                  style={{ background: `${cursorColor}14`, border: `1.5px solid ${cursorColor}99`, borderRadius: 8, padding: '9px 18px', font: 'inherit', color: cursorColor, fontWeight: 700, cursor: 'pointer', fontSize: '0.97rem', letterSpacing: '0.01em' }}
+                >
+                  💡 Why HeatFX
+                </button>
+              </div>
               {!user && (
                 <p style={{ margin: 0, fontSize: '0.83rem', color: 'var(--text-muted)' }}>
                   💡 <strong style={{ color: 'var(--text)' }}>Free to use</strong> — no account needed.{' '}
@@ -516,7 +695,7 @@ export function RecordingScreen() {
               → Move your cursor into the box below and click or drag there
             </p>
             <p style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Shortcuts: <strong>Space</strong> stop, <strong>1-5</strong> animation themes, <strong>Left/Right</strong> cursor color, mouse <strong>wheel on grid</strong> changes cursor size
+              Shortcuts: <strong>Space</strong> stop; keyboard <strong>←</strong> <strong>→</strong> cursor colour; <strong>1–6</strong> shape, <strong>Q–Y</strong> theme; mouse <strong>wheel on grid</strong> resizes cursor
             </p>
             <div
               style={{
@@ -532,7 +711,7 @@ export function RecordingScreen() {
               }}
             >
               <span style={{ color: 'var(--text)', fontSize: '1rem', fontWeight: 700 }}>
-                {(elapsedMs / 1000).toFixed(1)}s / 30s
+                {(elapsedMs / 1000).toFixed(1)}s / {(sessionCapMsRef.current / 1000).toFixed(0)}s
                 {phase === 'paused' && ' (paused)'}
               </span>
               {phase === 'recording' && (
@@ -619,6 +798,7 @@ export function RecordingScreen() {
                 isActive={phase === 'recording' || phase === 'paused'}
                 color={cursorColor}
                 sizePx={cursorSizePx}
+                shape={cursorShape}
               />
               <RecordingLiveOverlay
                 gridRef={gridRef}
@@ -632,7 +812,60 @@ export function RecordingScreen() {
                 theme={animationTheme}
                 color={cursorColor}
                 cursorSizePx={cursorSizePx}
+                cursorShape={cursorShape}
               />
+              <ChaosOverlay
+                gridRef={gridRef}
+                isActive={phase === 'recording' && chaosActive}
+                obstacleType={chaosObstacleType}
+                density={chaosDensity}
+                accentColor={cursorColor}
+                cursorSizePx={cursorSizePx}
+                onHit={(gridX, gridY) => {
+                  chaosHitCountRef.current += 1;
+                  const dims = frozenGridRef.current;
+                  if (dims) {
+                    const t = accumulatedMsRef.current + (Date.now() - startTimeRef.current);
+                    chaosHitsRef.current.push({ t, normX: gridX / dims.widthPx, normY: gridY / dims.heightPx });
+                  }
+                  setHitFlash({ x: gridX, y: gridY });
+                  if (hitFlashTimerRef.current) clearTimeout(hitFlashTimerRef.current);
+                  hitFlashTimerRef.current = setTimeout(() => setHitFlash(null), 700);
+                }}
+              />
+              {hitFlash && phase === 'recording' && chaosActive && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: hitFlash.x,
+                    top: hitFlash.y,
+                    transform: 'translate(-50%, -120%)',
+                    pointerEvents: 'none',
+                    zIndex: 30,
+                    userSelect: 'none',
+                    animation: 'chaos-hit 0.7s ease forwards',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{
+                    fontSize: `${chaosHitTy.emojiRem}rem`,
+                    filter: 'drop-shadow(0 0 8px #ff4444)',
+                    lineHeight: 1,
+                  }}>
+                    💥
+                  </div>
+                  <div style={{
+                    fontSize: `${chaosHitTy.powRem}rem`,
+                    fontWeight: 800,
+                    color: '#ff4444',
+                    letterSpacing: '0.05em',
+                    textShadow: '0 0 6px #ff000088',
+                    marginTop: 2,
+                  }}>
+                    POW!
+                  </div>
+                </div>
+              )}
               {phase === 'recording' && activeHint && (
                 activeHint.startsWith('👆') ? (
                   /* Primary hint — big centred call-out */
@@ -818,6 +1051,45 @@ export function RecordingScreen() {
                   </div>
                 </div>
               )}
+              {/* GO! flash */}
+              {showGo && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 15 }}>
+                  <div
+                    key="go-flash"
+                    style={{
+                      fontSize: 'clamp(72px, 18vw, 180px)',
+                      fontWeight: 900,
+                      lineHeight: 1,
+                      color: `${cursorColor}55`,
+                      textShadow: `0 0 40px ${cursorColor}33`,
+                      userSelect: 'none',
+                      animation: 'countdown-pop 0.35s ease forwards',
+                    }}
+                  >
+                    GO!
+                  </div>
+                </div>
+              )}
+              {/* Milestone banner: only at 20s and 10s remaining */}
+              {milestoneText && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 15 }}>
+                  <div
+                    key={milestoneText}
+                    style={{
+                      fontSize: 'clamp(72px, 18vw, 180px)',
+                      fontWeight: 900,
+                      lineHeight: 1,
+                      color: `${cursorColor}55`,
+                      textShadow: `0 0 28px ${cursorColor}33`,
+                      userSelect: 'none',
+                      letterSpacing: '-0.02em',
+                      animation: 'countdown-pop 0.35s ease forwards',
+                    }}
+                  >
+                    {milestoneText}
+                  </div>
+                </div>
+              )}
               {finalCountdownNumber !== null && (
                 <div
                   style={{
@@ -835,8 +1107,8 @@ export function RecordingScreen() {
                       fontSize: 'clamp(72px, 18vw, 180px)',
                       fontWeight: 900,
                       lineHeight: 1,
-                      color: `${cursorColor}66`,
-                      textShadow: `0 0 28px ${cursorColor}35`,
+                      color: `${cursorColor}55`,
+                      textShadow: `0 0 28px ${cursorColor}33`,
                       userSelect: 'none',
                     }}
                   >
@@ -870,7 +1142,7 @@ export function RecordingScreen() {
                     }}
                     title="Elapsed recording time"
                   >
-                    {(elapsedMs / 1000).toFixed(1)}s / 30s
+                    {(elapsedMs / 1000).toFixed(1)}s / {(sessionCapMsRef.current / 1000).toFixed(0)}s
                     {phase === 'paused' ? ' (paused)' : ''}
                   </span>
                   <button

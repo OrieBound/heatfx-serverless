@@ -5,39 +5,69 @@ import {
   useRecordingSettings,
   CURSOR_SIZE_MIN,
   CURSOR_SIZE_MAX,
+  CHAOS_DENSITY_MIN,
+  CHAOS_DENSITY_MAX,
+  RECORDING_DURATION_OPTIONS_MS,
   type AnimationTheme,
   type GridBackground,
+  type ChaosObstacleType,
+  type CursorShape,
+  type RecordingDurationMs,
 } from '@/contexts/RecordingSettingsContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface RecordingSidebarProps {
   children?: React.ReactNode;
   side?: 'left' | 'right';
 }
 
-const ANIMATION_THEMES: { value: AnimationTheme; label: string; hotkey: string }[] = [
-  { value: 'classic', label: 'Classic', hotkey: '1' },
-  { value: 'neon', label: 'Neon', hotkey: '2' },
-  { value: 'party', label: 'Party', hotkey: '3' },
-  { value: 'fire', label: 'Fire', hotkey: '4' },
-  { value: 'ocean', label: 'Ocean', hotkey: '5' },
+const CURSOR_SHAPES: { value: CursorShape; label: string; emoji: string; hotkey: string }[] = [
+  { value: 'circle',   label: 'Circle',   emoji: '●', hotkey: '1' },
+  { value: 'square',   label: 'Square',   emoji: '■', hotkey: '2' },
+  { value: 'plus',     label: 'Plus',     emoji: '+', hotkey: '3' },
+  { value: 'diamond',  label: 'Diamond',  emoji: '◆', hotkey: '4' },
+  { value: 'octagon',  label: 'Octagon',  emoji: '⯃', hotkey: '5' },
+  { value: 'triangle', label: 'Triangle', emoji: '▲', hotkey: '6' },
 ];
 
-const GRID_BACKGROUNDS: { value: GridBackground; label: string }[] = [
-  { value: 'none', label: 'None' },
-  { value: 'dots', label: 'Dots' },
-  { value: 'grid', label: 'Grid' },
+const ANIMATION_THEMES: { value: AnimationTheme; label: string; emoji: string; hotkey: string }[] = [
+  { value: 'classic', label: 'Classic', emoji: '💫', hotkey: 'Q' },
+  { value: 'neon',    label: 'Neon',    emoji: '✨', hotkey: 'W' },
+  { value: 'party',   label: 'Party',   emoji: '🎊', hotkey: 'E' },
+  { value: 'fire',    label: 'Fire',    emoji: '🔥', hotkey: 'R' },
+  { value: 'ocean',   label: 'Ocean',   emoji: '🌊', hotkey: 'T' },
+  { value: 'cosmic',  label: 'Cosmic',  emoji: '🌌', hotkey: 'Y' },
 ];
+
+const GRID_BACKGROUNDS: { value: GridBackground; label: string; hotkey: string }[] = [
+  { value: 'none', label: 'None', hotkey: 'Z' },
+  { value: 'dots', label: 'Dots', hotkey: 'X' },
+  { value: 'grid', label: 'Grid', hotkey: 'C' },
+];
+
+const CHAOS_OBSTACLE_TYPES: { value: ChaosObstacleType; label: string; emoji: string; hotkey: string }[] = [
+  { value: 'none',       label: 'None',    emoji: '○', hotkey: 'A' },
+  { value: 'dots',       label: 'Dots',    emoji: '●', hotkey: 'S' },
+  { value: 'rocks',      label: 'Rocks',   emoji: '⬡', hotkey: 'D' },
+  { value: 'snowflakes', label: 'Flakes',  emoji: '❄', hotkey: 'F' },
+  { value: 'stars',      label: 'Stars',   emoji: '★', hotkey: 'G' },
+  { value: 'rings',      label: 'Rings',   emoji: '◎', hotkey: 'H' },
+];
+
 
 export function RecordingSidebar({ children, side = 'left' }: RecordingSidebarProps) {
+  const { user } = useAuth();
   const { color: cursorColor, setColor: setCursorColor, palette } = useCursorColor();
   const {
-    cursorSizePx,
-    setCursorSizePx,
-    animationTheme,
-    setAnimationTheme,
-    gridBackground,
-    setGridBackground,
+    cursorSizePx, setCursorSizePx,
+    animationTheme, setAnimationTheme,
+    gridBackground, setGridBackground,
+    cursorShape, setCursorShape,
+    chaosObstacleType, setChaosObstacleType,
+    chaosDensity, setChaosDensity,
+    recordingDurationMs, setRecordingDurationMs,
   } = useRecordingSettings();
+  const chaosActive = chaosObstacleType !== 'none';
   const activePaletteIndex = palette.indexOf(cursorColor);
   const cyclePalette = (direction: -1 | 1) => {
     if (!palette.length) return;
@@ -70,11 +100,53 @@ export function RecordingSidebar({ children, side = 'left' }: RecordingSidebarPr
         Settings
       </h3>
 
+      {user && (
+        <div>
+          <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Recording length
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {RECORDING_DURATION_OPTIONS_MS.map((ms) => {
+              const sec = ms / 1000;
+              const active = recordingDurationMs === ms;
+              return (
+                <button
+                  key={ms}
+                  type="button"
+                  onClick={() => setRecordingDurationMs(ms as RecordingDurationMs)}
+                  title={`Record up to ${sec} seconds`}
+                  style={{
+                    flex: '1 1 auto',
+                    minWidth: 72,
+                    padding: '8px 6px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    border: `1px solid ${active ? cursorColor : 'var(--border)'}`,
+                    borderRadius: 6,
+                    background: active ? `${cursorColor}22` : 'transparent',
+                    color: active ? 'var(--text)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {sec}s
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div>
         <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
           Cursor color
         </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        <p style={{ margin: '0 0 8px', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+          Press the <kbd style={{ padding: '1px 5px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.68rem', fontFamily: 'ui-monospace, monospace' }}>←</kbd>{' '}
+          <kbd style={{ padding: '1px 5px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.68rem', fontFamily: 'ui-monospace, monospace' }}>→</kbd>{' '}
+          <strong style={{ color: 'var(--text)' }}>arrow keys on your keyboard</strong> (not on-screen buttons) to cycle colours while recording.
+        </p>
+        {/* 22 palette swatches – 11 per row, 2 rows */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(11, 24px)', gap: 5, marginBottom: 8 }}>
           {palette.map((c) => (
             <button
               key={c}
@@ -87,51 +159,48 @@ export function RecordingSidebar({ children, side = 'left' }: RecordingSidebarPr
                 background: c,
                 border: cursorColor === c ? '2px solid var(--text)' : '1px solid var(--border)',
                 cursor: 'pointer',
+                padding: 0,
               }}
               title={c}
             />
           ))}
-          <label
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              cursor: 'pointer',
-              gap: 4,
-            }}
-            title="Pick any color (gradient/custom)"
-          >
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                border: '2px solid var(--border)',
-                padding: 2,
-                background: `linear-gradient(135deg, #6366f1 0%, #ec4899 50%, #22c55e 100%)`,
-              }}
-            >
-              <input
-                type="color"
-                value={cursorColor}
-                onChange={(e) => setCursorColor(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  padding: 0,
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  display: 'block',
-                  background: cursorColor,
-                }}
-              />
-            </div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: `linear-gradient(90deg, transparent, ${cursorColor}40, transparent)`, padding: '0 4px', borderRadius: 2 }}>
-              Custom
-            </span>
-          </label>
         </div>
+        {/* Custom colour picker */}
+        <label
+          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+          title="Pick any colour"
+        >
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              border: '2px solid var(--border)',
+              padding: 2,
+              background: `linear-gradient(135deg, #6366f1 0%, #ec4899 50%, #22c55e 100%)`,
+              flexShrink: 0,
+            }}
+          >
+            <input
+              type="color"
+              value={cursorColor}
+              onChange={(e) => setCursorColor(e.target.value)}
+              style={{
+                width: '100%',
+                height: '100%',
+                padding: 0,
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                display: 'block',
+                background: cursorColor,
+              }}
+            />
+          </div>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            Custom colour
+          </span>
+        </label>
         <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             type="button"
@@ -196,55 +265,173 @@ export function RecordingSidebar({ children, side = 'left' }: RecordingSidebarPr
         </p>
       </div>
 
+      {/* Cursor shape */}
       <div>
         <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          Animation theme
+          Cursor shape
         </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {ANIMATION_THEMES.map(({ value, label, hotkey }) => (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
+          {CURSOR_SHAPES.map(({ value, label, emoji, hotkey }) => (
             <button
               key={value}
               type="button"
-              onClick={() => setAnimationTheme(value)}
+              onClick={() => setCursorShape(value)}
+              title={`Press ${hotkey} to switch to ${label}`}
               style={{
-                padding: '8px 12px',
-                fontSize: '0.85rem',
-                textAlign: 'left',
-                background: animationTheme === value ? 'var(--border)' : 'transparent',
-                color: animationTheme === value ? 'var(--text)' : 'var(--text-muted)',
+                padding: '6px 4px',
+                fontSize: '0.75rem',
                 border: '1px solid var(--border)',
                 borderRadius: 6,
+                background: cursorShape === value ? 'var(--border)' : 'transparent',
+                color: cursorShape === value ? 'var(--text)' : 'var(--text-muted)',
                 cursor: 'pointer',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
+                gap: 2,
               }}
-              title={`Press ${hotkey} to switch to ${label}`}
             >
+              <span style={{ fontSize: '1.0rem', lineHeight: 1 }}>{emoji}</span>
               <span>{label}</span>
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  padding: '3px 7px',
-                  borderRadius: 999,
-                  border: `1px solid ${animationTheme === value ? 'var(--text-muted)' : 'var(--border)'}`,
-                  color: animationTheme === value ? 'var(--text)' : 'var(--text-muted)',
-                  background: animationTheme === value ? 'var(--surface)' : 'transparent',
-                  minWidth: 28,
-                  textAlign: 'center',
-                }}
-              >
+              <span style={{
+                fontSize: '0.6rem',
+                fontWeight: 700,
+                padding: '1px 4px',
+                borderRadius: 3,
+                border: '1px solid var(--border)',
+                color: 'var(--text-muted)',
+                lineHeight: 1.4,
+                marginTop: 1,
+              }}>
                 {hotkey}
               </span>
             </button>
           ))}
         </div>
-        <p style={{ margin: '8px 0 0', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-          Neon: glow trail. Party: rainbow. Fire: warm trail + burst. Ocean: blue waves.
+      </div>
+
+      {/* Cursor theme */}
+      <div>
+        <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          Cursor theme
         </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
+          {ANIMATION_THEMES.map(({ value, label, emoji, hotkey }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setAnimationTheme(value)}
+              title={`Press ${hotkey} to switch to ${label}`}
+              style={{
+                padding: '6px 4px',
+                fontSize: '0.75rem',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                background: animationTheme === value ? 'var(--border)' : 'transparent',
+                color: animationTheme === value ? 'var(--text)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+              }}
+            >
+              <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>{emoji}</span>
+              <span>{label}</span>
+              <span style={{
+                fontSize: '0.6rem',
+                fontWeight: 700,
+                padding: '1px 4px',
+                borderRadius: 3,
+                border: '1px solid var(--border)',
+                color: 'var(--text-muted)',
+                lineHeight: 1.4,
+                marginTop: 1,
+              }}>
+                {hotkey}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chaos Mode */}
+      <div>
+        <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          Chaos Mode <span style={{ fontSize: '0.72rem' }}>💥</span>
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5, marginBottom: chaosActive ? 12 : 0 }}>
+          {CHAOS_OBSTACLE_TYPES.map(({ value, label, emoji, hotkey }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setChaosObstacleType(value)}
+              title={`Press ${hotkey} to select ${label}`}
+              style={{
+                padding: '6px 4px',
+                fontSize: '0.75rem',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                background: chaosObstacleType === value
+                  ? (value === 'none' ? 'var(--border)' : '#ef444422')
+                  : 'transparent',
+                color: chaosObstacleType === value
+                  ? (value === 'none' ? 'var(--text)' : '#f87171')
+                  : 'var(--text-muted)',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+                position: 'relative',
+              }}
+            >
+              <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>{emoji}</span>
+              <span>{label}</span>
+              <span style={{
+                fontSize: '0.6rem',
+                fontWeight: 700,
+                padding: '1px 4px',
+                borderRadius: 3,
+                border: '1px solid var(--border)',
+                color: 'var(--text-muted)',
+                lineHeight: 1.4,
+                marginTop: 1,
+              }}>
+                {hotkey}
+              </span>
+            </button>
+          ))}
+        </div>
+        {!chaosActive && (
+          <p style={{ margin: '8px 0 0', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            Choose any obstacle type other than None to show the <strong style={{ color: 'var(--text)' }}>density</strong> slider (low → high). Use <kbd style={{ padding: '1px 4px', borderRadius: 3, border: '1px solid var(--border)', fontSize: '0.65rem', fontFamily: 'monospace' }}>↑</kbd>{' '}
+            <kbd style={{ padding: '1px 4px', borderRadius: 3, border: '1px solid var(--border)', fontSize: '0.65rem', fontFamily: 'monospace' }}>↓</kbd> on the keyboard to adjust density.
+          </p>
+        )}
+
+        {chaosActive && (
+          <>
+            <p style={{ margin: '0 0 6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Density
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', minWidth: 16 }}>{CHAOS_DENSITY_MIN}</span>
+              <input
+                type="range"
+                min={CHAOS_DENSITY_MIN}
+                max={CHAOS_DENSITY_MAX}
+                value={chaosDensity}
+                onChange={(e) => setChaosDensity(Number(e.target.value))}
+                style={{ flex: 1, accentColor: '#f87171' }}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', minWidth: 24 }}>{CHAOS_DENSITY_MAX}</span>
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {chaosDensity} obstacle{chaosDensity !== 1 ? 's' : ''} — dodge them all! 💥
+            </p>
+          </>
+        )}
       </div>
 
       <div>
@@ -252,11 +439,12 @@ export function RecordingSidebar({ children, side = 'left' }: RecordingSidebarPr
           Background
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {GRID_BACKGROUNDS.map(({ value, label }) => (
+          {GRID_BACKGROUNDS.map(({ value, label, hotkey }) => (
             <button
               key={value}
               type="button"
               onClick={() => setGridBackground(value)}
+              title={`Press ${hotkey} to select ${label}`}
               style={{
                 padding: '8px 12px',
                 fontSize: '0.85rem',
@@ -266,9 +454,24 @@ export function RecordingSidebar({ children, side = 'left' }: RecordingSidebarPr
                 border: '1px solid var(--border)',
                 borderRadius: 6,
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
               }}
             >
-              {label}
+              <span>{label}</span>
+              <span style={{
+                fontSize: '0.6rem',
+                fontWeight: 700,
+                padding: '1px 5px',
+                borderRadius: 3,
+                border: '1px solid var(--border)',
+                color: 'var(--text-muted)',
+                lineHeight: 1.4,
+              }}>
+                {hotkey}
+              </span>
             </button>
           ))}
         </div>

@@ -63,3 +63,10 @@ a {
   0% { background-position: 0 0; }
   100% { background-position: 24px 24px; }
 }
+
+@keyframes chaos-hit {
+  0%   { opacity: 0; transform: translate(-50%, -120%) scale(0.6); }
+  15%  { opacity: 1; transform: translate(-50%, -130%) scale(1.2); }
+  40%  { opacity: 1; transform: translate(-50%, -140%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -170%) scale(0.85); }
+}

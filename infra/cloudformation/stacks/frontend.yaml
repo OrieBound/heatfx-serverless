@@ -10,7 +10,7 @@ Resources:
   SiteBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'heatfx-${Environment}-site-${AWS::AccountId}-${AWS::Region}'
+      BucketName: !Sub 'heatfx-site-${AWS::AccountId}-${AWS::Region}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -25,11 +25,31 @@ Resources:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
-        Name: !Sub 'heatfx-${Environment}-oac'
+        Name: !Sub 'heatfx-oac'
         Description: OAC for HeatFX static site
         SigningBehavior: always
         SigningProtocol: sigv4
         OriginAccessControlOriginType: s3
+
+  # Rewrites /about → /about/index.html so Next.js static pages resolve correctly
+  SubpageRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: heatfx-subpage-rewrite
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Append index.html to directory-style URLs
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var uri = event.request.uri;
+          if (uri === '/' || uri === '') {
+            event.request.uri = '/index.html';
+          } else if (!uri.split('/').pop().includes('.')) {
+            event.request.uri = uri + '.html';
+          }
+          return event.request;
+        }
 
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
@@ -59,6 +79,9 @@ Resources:
             QueryString: false
             Cookies:
               Forward: none
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SubpageRewriteFunction.FunctionARN
         CustomErrorResponses:
           - ErrorCode: 403
             ResponseCode: 200
