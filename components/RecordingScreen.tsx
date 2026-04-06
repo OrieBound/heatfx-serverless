@@ -645,7 +645,7 @@ export function RecordingScreen() {
                 in the grid or below.
               </li>
               <li>
-                <strong>Dark box only</strong>—that’s what gets recorded. Left- or right-click, drag, and keep the pointer there.
+                <strong>Dark box only</strong>—that's what gets recorded. Left- or right-click, drag, and keep the pointer there.
               </li>
               <li>
                 <strong>Sidebar</strong> (after you start): try color, size, shape, themes, chaos, grid, etc. Change settings while you move for the best effect.
