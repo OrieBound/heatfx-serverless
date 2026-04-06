@@ -645,13 +645,13 @@ export function RecordingScreen() {
                 in the grid or below.
               </li>
               <li>
-                <strong>Dark box only</strong>—that's what gets recorded. Left- or right-click, drag, and keep the pointer there.
+                <strong>Main recording grid</strong> (the dark box)—that&apos;s where your movement and clicks are recorded. Left- or right-click and drag to interact with the grid.
               </li>
               <li>
-                <strong>Sidebar</strong> (after you start): try color, size, shape, themes, chaos, grid, etc. Change settings while you move for the best effect.
+                <strong>Settings bar</strong> (after you start): try color, size, shape, themes, chaos, grid, etc. Change settings while you move for the best effect.
               </li>
               <li>
-                <strong>Stop</strong> when done (or let the timer run out), then open results if you want.
+                Stop when done (or let the timer run out), then open results if you want.
               </li>
             </ol>
             <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
