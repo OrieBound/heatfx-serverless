@@ -2,6 +2,7 @@
 
 import type { RecordedEvent } from '@/types/events';
 import type { AnimationTheme, CursorShape } from '@/contexts/RecordingSettingsContext';
+import { CURSOR_SIZE_DEFAULT } from '@/contexts/RecordingSettingsContext';
 import { effectParticleShapeStyle, softGlowFilter } from '@/components/cursorVisualUtils';
 
 const TRAIL_MAX = 30;
@@ -30,11 +31,11 @@ export function ReplayEffects({
   scaleY,
   width,
   height,
-  cursorSizePx = 16,
+  cursorSizePx = CURSOR_SIZE_DEFAULT,
   cursorShape = 'circle',
 }: ReplayEffectsProps) {
   if (theme === 'classic') return null;
-  const scale = Math.max(1, (cursorSizePx ?? 16) / 16);
+  const scale = Math.max(1, (cursorSizePx ?? CURSOR_SIZE_DEFAULT) / 16);
 
   const trailPoints: { x: number; y: number; t: number }[] = [];
   for (const e of events) {

@@ -6,7 +6,7 @@ const STORAGE_PREFIX = 'heatfx-';
 
 export const CURSOR_SIZE_MIN = 8;
 export const CURSOR_SIZE_MAX = 160;
-export const CURSOR_SIZE_DEFAULT = 16;
+export const CURSOR_SIZE_DEFAULT = 40;
 
 export type AnimationTheme = 'classic' | 'neon' | 'party' | 'fire' | 'ocean' | 'cosmic';
 export type GridBackground = 'none' | 'dots' | 'grid';

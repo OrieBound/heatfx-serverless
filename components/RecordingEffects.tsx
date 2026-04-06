@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { AnimationTheme, CursorShape } from '@/contexts/RecordingSettingsContext';
+import { CURSOR_SIZE_DEFAULT } from '@/contexts/RecordingSettingsContext';
 import { effectParticleShapeStyle, softGlowFilter } from '@/components/cursorVisualUtils';
 
 interface RecordingEffectsProps {
@@ -30,8 +31,8 @@ const TRAIL_MAX = 30;
 const TRAIL_TTL = 500;
 const BURST_TTL = 800;
 
-export function RecordingEffects({ gridRef, isActive, theme, color, cursorSizePx = 16, cursorShape = 'circle' }: RecordingEffectsProps) {
-  const scale = Math.max(1, (cursorSizePx ?? 16) / 16);
+export function RecordingEffects({ gridRef, isActive, theme, color, cursorSizePx = CURSOR_SIZE_DEFAULT, cursorShape = 'circle' }: RecordingEffectsProps) {
+  const scale = Math.max(1, (cursorSizePx ?? CURSOR_SIZE_DEFAULT) / 16);
   const [trail, setTrail] = useState<TrailPoint[]>([]);
   const [bursts, setBursts] = useState<ClickBurst[]>([]);
   const trailRef = useRef<TrailPoint[]>([]);

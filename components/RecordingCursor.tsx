@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { CursorShape } from '@/contexts/RecordingSettingsContext';
+import { CURSOR_SIZE_DEFAULT } from '@/contexts/RecordingSettingsContext';
 
 interface RecordingCursorProps {
   gridRef: React.RefObject<HTMLDivElement | null>;
@@ -41,7 +42,7 @@ function getShapeStyle(shape: CursorShape, sizePx: number, color: string): React
 }
 
 export function RecordingCursor({
-  gridRef, isActive, color = '#6366f1', sizePx = 12, shape = 'circle',
+  gridRef, isActive, color = '#6366f1', sizePx = CURSOR_SIZE_DEFAULT, shape = 'circle',
 }: RecordingCursorProps) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
