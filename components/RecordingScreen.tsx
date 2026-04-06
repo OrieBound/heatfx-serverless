@@ -644,9 +644,14 @@ export function RecordingScreen() {
                 </button>{' '}
                 in the grid or below.
               </li>
-              <li><strong>Move and click</strong> inside the dark box (left or right click, or drag).</li>
               <li>
-                Click <strong>Stop</strong> when done (or wait for the timer), then choose whether to proceed to results.
+                <strong>Dark box only</strong>—that’s what gets recorded. Left- or right-click, drag, and keep the pointer there.
+              </li>
+              <li>
+                <strong>Sidebar</strong> (after you start): try color, size, shape, themes, chaos, grid, etc. Change settings while you move for the best effect.
+              </li>
+              <li>
+                <strong>Stop</strong> when done (or let the timer run out), then open results if you want.
               </li>
             </ol>
             <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
