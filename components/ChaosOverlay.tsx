@@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react';
 import { CHAOS_DENSITY_MAX } from '@/contexts/RecordingSettingsContext';
 import type { ChaosObstacleType } from '@/contexts/RecordingSettingsContext';
 const BURST_FRAMES = 22;
-const HIT_COOLDOWN_FRAMES = 40;
 
 interface Obstacle {
   x: number;
@@ -15,6 +14,8 @@ interface Obstacle {
   rotation: number;
   rotationSpeed: number;
   burstFrame: number; // -1 = alive, 0+ = bursting
+  /** True while cursor overlaps; POW fires only on false→true (per obstacle, not global cooldown). */
+  cursorWasInside: boolean;
 }
 
 function spawnObstacle(w: number, h: number, spreadY?: number): Obstacle {
@@ -28,6 +29,7 @@ function spawnObstacle(w: number, h: number, spreadY?: number): Obstacle {
     rotation: Math.random() * Math.PI * 2,
     rotationSpeed: (Math.random() - 0.5) * 0.08,
     burstFrame: -1,
+    cursorWasInside: false,
   };
 }
 
@@ -179,15 +181,14 @@ export function ChaosOverlay({
     );
 
     let cursor: { x: number; y: number } | null = null;
-    let hitCooldown = 0;
     let raf = 0;
 
     const tick = () => {
       ctx.clearRect(0, 0, w, h);
-      if (hitCooldown > 0) hitCooldown--;
 
       // Read volatile values from refs each frame — avoids restarting effect on change
       const color = accentColorRef.current;
+      const cursorR = cursorSizePxRef.current / 2;
 
       for (const obs of obstacles) {
         if (obs.burstFrame >= 0) {
@@ -211,15 +212,22 @@ export function ChaosOverlay({
 
           drawObstacle(ctx, obs, obstacleType, color, 0.8);
 
-          // Read cursor size via ref so resizing doesn't restart the effect
-          if (cursor && hitCooldown <= 0) {
+          // Per-obstacle enter detection: each nearby item gets its own POW; no global cooldown.
+          if (cursor) {
             const dx = cursor.x - obs.x;
             const dy = cursor.y - obs.y;
-            if (Math.sqrt(dx * dx + dy * dy) < obs.radius + cursorSizePxRef.current / 2) {
-              obs.burstFrame = 0;
-              hitCooldown = HIT_COOLDOWN_FRAMES;
-              onHitRef.current(cursor.x, cursor.y);
+            const inside = Math.sqrt(dx * dx + dy * dy) < obs.radius + cursorR;
+            if (inside) {
+              if (!obs.cursorWasInside) {
+                obs.cursorWasInside = true;
+                obs.burstFrame = 0;
+                onHitRef.current(cursor.x, cursor.y);
+              }
+            } else {
+              obs.cursorWasInside = false;
             }
+          } else {
+            obs.cursorWasInside = false;
           }
         }
       }
@@ -366,7 +374,9 @@ export function ChaosReplayOverlay({
       const y = ((rawY % span) + span) % span - o.radius;
       const x = o.x0 + o.vxPxMs * t;
       const rotation = o.rotation0 + o.rotSpeedMs * t;
-      const obs: Obstacle = { x, y, vx: 0, vy: 0, radius: o.radius, rotation, rotationSpeed: 0, burstFrame: -1 };
+      const obs: Obstacle = {
+        x, y, vx: 0, vy: 0, radius: o.radius, rotation, rotationSpeed: 0, burstFrame: -1, cursorWasInside: false,
+      };
       drawObstacle(ctx, obs, obstacleType, accentColor, 0.7);
     });
   }, [currentTimeMs, gridWidthPx, gridHeightPx, obstacleType, accentColor, density, chaosDensitySnapshots]);

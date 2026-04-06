@@ -143,7 +143,8 @@ export function RecordingScreen() {
   const chaosHitCountRef        = useRef(0);
   const chaosHitsRef            = useRef<ChaosHitEvent[]>([]);
   const chaosDensitySnapshotsRef = useRef<ChaosDensitySnapshot[]>([]);
-  const [hitFlash, setHitFlash] = useState<{ x: number; y: number } | null>(null);
+  /** `id` increments each hit so the POW node remounts and CSS `chaos-hit` restarts (same coords would otherwise skip animation). */
+  const [hitFlash, setHitFlash] = useState<{ x: number; y: number; id: number } | null>(null);
   const hitFlashTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chaosSnapshotRef        = useRef<{ obstacleType: string; density: number } | null>(null);
 
@@ -833,13 +834,14 @@ export function RecordingScreen() {
                     const t = accumulatedMsRef.current + (Date.now() - startTimeRef.current);
                     chaosHitsRef.current.push({ t, normX: gridX / dims.widthPx, normY: gridY / dims.heightPx });
                   }
-                  setHitFlash({ x: gridX, y: gridY });
+                  setHitFlash((prev) => ({ x: gridX, y: gridY, id: (prev?.id ?? 0) + 1 }));
                   if (hitFlashTimerRef.current) clearTimeout(hitFlashTimerRef.current);
                   hitFlashTimerRef.current = setTimeout(() => setHitFlash(null), 700);
                 }}
               />
               {hitFlash && phase === 'recording' && chaosActive && (
                 <div
+                  key={hitFlash.id}
                   style={{
                     position: 'absolute',
                     left: hitFlash.x,
