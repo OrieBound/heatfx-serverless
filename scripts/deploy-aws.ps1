@@ -142,7 +142,7 @@ aws cloudformation deploy `
         "AppCallbackUrls=$AppCallbackUrls" `
         "AppLogoutUrls=$AppLogoutUrls" `
         "CorsAllowOrigin=$CorsAllowOrigin" `
-    --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND `
+    --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND `
     @AwsBase
 
 if ($LASTEXITCODE -ne 0) { Write-Fail "cloudformation deploy failed." }

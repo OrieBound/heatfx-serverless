@@ -78,7 +78,7 @@ aws cloudformation deploy \
     "AppCallbackUrls=$APP_CALLBACK_URLS" \
     "AppLogoutUrls=$APP_LOGOUT_URLS" \
     "CorsAllowOrigin=$CORS_ALLOW_ORIGIN" \
-  --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   "${AWS_ARGS[@]}"
 
 echo "    OK  Stack $STACK_NAME deployed."

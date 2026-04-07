@@ -45,17 +45,51 @@ phases:
           --output-template-file "$PACKAGED_TPL" \
           --region "$AWS_REGION"
       - |
-        aws cloudformation deploy \
+        export DEPLOY_PARAMS_JSON="$TEMPLATE_DIR/.packaged/deploy-params.json"
+        node <<'NODESCRIPT'
+        const fs = require('fs');
+        const out = process.env.DEPLOY_PARAMS_JSON;
+        const cors = process.env.CORS_ALLOW_ORIGIN;
+        const params = [
+          { ParameterKey: 'Environment', ParameterValue: process.env.ENV || 'prod' },
+          { ParameterKey: 'CognitoDomainPrefix', ParameterValue: process.env.COGNITO_DOMAIN_PREFIX || '' },
+          {
+            ParameterKey: 'AppCallbackUrls',
+            ParameterValue:
+              process.env.APP_CALLBACK_URLS || 'http://localhost:3000/auth/callback',
+          },
+          {
+            ParameterKey: 'AppLogoutUrls',
+            ParameterValue: process.env.APP_LOGOUT_URLS || 'http://localhost:3000/',
+          },
+          {
+            ParameterKey: 'CorsAllowOrigin',
+            ParameterValue: cors !== undefined && cors !== '' ? cors : '*',
+          },
+        ];
+        if (!params[1].ParameterValue) {
+          console.error('COGNITO_DOMAIN_PREFIX is empty');
+          process.exit(1);
+        }
+        fs.writeFileSync(out, JSON.stringify(params));
+        NODESCRIPT
+      - |
+        if ! aws cloudformation deploy \
           --stack-name "$STACK_NAME" \
           --template-file "$PACKAGED_TPL" \
-          --parameter-overrides \
-            "Environment=${ENV}" \
-            "CognitoDomainPrefix=${COGNITO_DOMAIN_PREFIX}" \
-            "AppCallbackUrls=${APP_CALLBACK_URLS:-http://localhost:3000/auth/callback}" \
-            "AppLogoutUrls=${APP_LOGOUT_URLS:-http://localhost:3000/}" \
-            "CorsAllowOrigin=${CORS_ALLOW_ORIGIN:-*}" \
-          --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+          --parameter-overrides "file://$DEPLOY_PARAMS_JSON" \
+          --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
           --region "$AWS_REGION"
+        then
+          echo "=== Recent stack events (look for ResourceStatus FAILED / ResourceStatusReason) ==="
+          aws cloudformation describe-stack-events \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --max-items 30 \
+            --query 'StackEvents[*].[Timestamp,ResourceStatus,ResourceType,LogicalResourceId,ResourceStatusReason]' \
+            --output table || true
+          exit 1
+        fi
       - |
         out() {
           aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
