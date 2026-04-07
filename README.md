@@ -19,7 +19,7 @@ Open [http://localhost:3000](http://localhost:3000). Changes are picked up autom
 ## Stack
 
 - **Frontend**: Next.js 14 (App Router), TypeScript, static export for S3/CloudFront.
-- **Backend**: API Gateway HTTP API, Lambda, DynamoDB, S3, Cognito. Templates live under `infra/cloudformation/`; **`aws cloudformation package`** copies them (and Lambda code) into **your** S3 bucket, then **one** parent stack deploys nested data, auth, API, and frontend. See **[infra/README.md](infra/README.md)** and **`scripts/deploy-aws.sh`** / **`scripts/deploy-aws.ps1`**.
+- **Backend**: API Gateway HTTP API, Lambda, DynamoDB, S3, Cognito. Templates live under `infra/cloudformation/`; **`aws cloudformation package`** copies them (and Lambda code) into **your** S3 bucket, then **one** parent stack deploys nested data, auth, API, and frontend. See **[infra/README.md](infra/README.md)** and **`scripts/deploy-aws.sh`** / **`scripts/deploy-aws.ps1`**. A **Terraform** alternative is planned under `infra/terraform/` (not wired yet); use **one** of CloudFormation or Terraform per environment—see infra README.
 
 ## Implementation status
 

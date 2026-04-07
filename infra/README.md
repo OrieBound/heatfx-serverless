@@ -2,6 +2,14 @@
 
 Infrastructure as Code for the HeatFX static app (S3/CloudFront), Cognito auth, API Gateway HTTP API + Lambda, DynamoDB session index, and S3 recording payloads.
 
+## CloudFormation vs Terraform (pick one)
+
+Today this repo implements AWS with **CloudFormation** under **`infra/cloudformation/`** (parent stack + nested stacks). Optional **CodePipeline + CodeBuild** for GitHub → prod lives under **`infra/cloudformation/pipeline/`** with **`buildspec.yml`** at the repo root.
+
+The **same** resources (data, auth, API, frontend, and optionally CI) *can* be provisioned with **Terraform** (or OpenTofu) instead. That work will live under **`infra/terraform/`** once modules and provider dependencies are added. **Do not** manage the same logical environment with both tools at once—tear down one stack before adopting the other, or you risk conflicting ownership and state drift.
+
+When you move to Terraform, you will need to **readjust** anything that assumed CloudFormation-only workflows: for example, CI would run **`terraform plan` / `apply`** (and packaging for Lambda) instead of **`aws cloudformation package` / `deploy`**, and pipeline IAM policies must match whatever Terraform creates. Terraform layout and `required_providers` are **not** wired up yet; treat **`infra/terraform/README.md`** as the placeholder until that lands.
+
 ## How deploy works
 
 You keep **all templates in the repo** (local paths). **One** logical deploy uses:
@@ -124,3 +132,5 @@ Push to your configured branch to run the pipeline, or **Release change** in the
 ## Tear down
 
 Delete the **parent** stack (`heatfx-prod`). CloudFormation removes nested stacks and their resources. Empty the recordings bucket if versioning/objects block deletion. Delete **heatfx-pipeline** separately if you created it.
+
+**Before switching to Terraform:** remove these CloudFormation stacks (and any leftover resources) so Terraform is the single source of truth; then introduce `infra/terraform` with providers and modules before applying.
