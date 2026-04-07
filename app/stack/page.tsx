@@ -23,19 +23,20 @@ export default function StackPage() {
     { name: 'AWS API Gateway (HTTP API)', role: 'API layer', detail: 'Routes HTTP requests to Lambda. JWT authorizer validates Cognito tokens automatically before the Lambda even runs.' },
     { name: 'AWS DynamoDB', role: 'Session metadata', detail: 'NoSQL table storing recording metadata (timestamps, dimensions, event counts, S3 key). Partition key: USER#sub. Sort key: SESSION#createdAt#sessionId for efficient per-user queries.' },
     { name: 'AWS S3', role: 'Event payload storage', detail: 'Raw event arrays (mouse coordinates + timestamps) are stored as JSON objects in S3 under sessions/{sub}/{sessionId}/events.json. S3 presigned URLs give the browser direct read access.' },
-    { name: 'AWS Cognito', role: 'Authentication', detail: 'User Pool manages sign-up, email verification, and login via SRP (Secure Remote Password). Cognito Groups handle the admin role. No hosted UI — fully custom auth pages.' },
+    { name: 'AWS Cognito', role: 'Authentication', detail: 'User Pool manages sign-up, email verification, and login. The app uses custom pages with SRP (Secure Remote Password) via amazon-cognito-identity-js. A Cognito domain prefix and OAuth callback/logout URLs are still configured in infrastructure for redirect flows (e.g. /auth/callback). Cognito Groups handle the admin role.' },
   ];
 
   const infra = [
-    { name: 'AWS CloudFormation + SAM', role: 'Infrastructure as Code', detail: 'The entire stack (Lambda, API Gateway, DynamoDB, S3, Cognito, CloudFront) is defined in YAML templates. One command tears it down or rebuilds it from scratch.' },
+    { name: 'AWS CloudFormation + SAM', role: 'Infrastructure as Code', detail: 'The stack (Lambda, API Gateway, DynamoDB, S3, Cognito, CloudFront) is defined in YAML under infra/cloudformation/. One deploy tears it down or rebuilds it. A Terraform-based layout is planned under infra/terraform — use one IaC path per environment, not both at once.' },
     { name: 'AWS CloudFront', role: 'CDN', detail: 'Serves the static frontend globally from edge locations. Origin Access Control (OAC) locks the S3 bucket so only CloudFront can read it. A CloudFront Function rewrites clean URLs to .html files.' },
     { name: 'S3 Static Hosting', role: 'Frontend delivery', detail: 'The Next.js static export (out/) is synced to S3 and served through CloudFront over HTTPS. No web server required — completely serverless end to end.' },
     { name: 'IAM Roles & Policies', role: 'Security', detail: 'Lambda has the minimum permissions required: read/write to its own S3 prefix, read/write to DynamoDB, and Cognito admin calls for group management. No wildcard permissions.' },
     { name: 'Nested CloudFormation Stacks', role: 'Modularity', detail: 'The parent stack delegates to four nested stacks: data (DynamoDB + S3), auth (Cognito), api (Lambda + API Gateway), and frontend (S3 + CloudFront). Each can be updated independently.' },
+    { name: 'CodePipeline + CodeBuild', role: 'Prod CI/CD (optional)', detail: 'For production, GitHub (AWS CodeConnections) can drive CodePipeline: CodeBuild runs cloudformation package/deploy, builds Next.js using stack outputs as env vars, syncs out/ to the site bucket, and invalidates CloudFront (buildspec.yml at repo root). Dev deploys can still use the scripts locally.' },
   ];
 
   const devtools = [
-    { name: 'Bash deploy script', role: 'Deployment', detail: 'scripts/deploy-aws.sh packages Lambda code, uploads it to an artifacts S3 bucket, and deploys the CloudFormation stack in one command.' },
+    { name: 'Deploy scripts', role: 'Deployment', detail: 'scripts/deploy-aws.sh and deploy-aws.ps1 package Lambda, upload to your packaging bucket, and deploy the parent stack. Pipeline-based prod deploys use the same packaging/deploy steps inside CodeBuild.' },
     { name: 'Git + GitHub', role: 'Version control', detail: 'Full source code is open on GitHub — CloudFormation templates, Lambda code, and Next.js frontend included.' },
     { name: 'AWS CLI', role: 'Cloud operations', detail: 'Used for stack management, Cognito user/group administration, S3 sync, and CloudFront invalidations during deployment.' },
     { name: 'nanoid', role: 'ID generation', detail: 'Lightweight URL-safe unique ID generator used for recording session IDs on the frontend before the API confirms.' },
@@ -82,7 +83,8 @@ export default function StackPage() {
             All API logic runs in a single <strong>AWS Lambda</strong> function, triggered on demand through <strong>API Gateway</strong>.
             Recording metadata lives in <strong>DynamoDB</strong> and raw event payloads in <strong>S3</strong>.
             Authentication is handled by <strong>AWS Cognito</strong>.
-            The entire infrastructure is defined as code in <strong>CloudFormation</strong> templates and can be deployed or torn down with one command.
+            Infrastructure is defined as code in <strong>CloudFormation</strong> today (with <strong>Terraform</strong> planned under <code style={{ fontSize: '0.88em' }}>infra/terraform</code>).
+            You can deploy or tear down with one command from the scripts, or use an optional <strong>CodePipeline</strong> build for production from GitHub.
           </div>
         </section>
 

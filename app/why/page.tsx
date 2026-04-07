@@ -23,7 +23,7 @@ export default function WhyPage() {
     {
       icon: '☁️',
       title: 'A real-world serverless reference',
-      body: 'Most tutorials show serverless in isolation — a single Lambda, a single bucket. HeatFX is a complete, production-shaped application: auth, API, database, file storage, CDN, and IaC all working together. It demonstrates how these pieces connect at a real scale, and the entire infrastructure can be spun up or torn down with one command.',
+      body: 'Most tutorials show serverless in isolation — a single Lambda, a single bucket. HeatFX is a complete, production-shaped application: auth, API, database, file storage, CDN, and IaC all working together. It demonstrates how these pieces connect at a real scale, and the entire infrastructure can be spun up or torn down with one command — or continuously delivered from GitHub via CodePipeline in prod.',
     },
     {
       icon: '💸',
@@ -38,7 +38,7 @@ export default function WhyPage() {
     {
       icon: '🔓',
       title: 'Open source and self-deployable',
-      body: 'The full source code — CloudFormation templates, Lambda handler, and Next.js frontend — is available on GitHub. Anyone can deploy their own instance into their own AWS account. The infrastructure is designed to be reusable: change the project name, run the deploy script, and a complete independent stack is running in minutes.',
+      body: 'The full source code — CloudFormation templates (with Terraform planned as an alternative), Lambda handler, and Next.js frontend — is available on GitHub. Anyone can deploy their own instance into their own AWS account. The infrastructure is designed to be reusable: parameters, deploy scripts, and optional pipeline wiring get a complete independent stack running in minutes.',
     },
   ];
 
