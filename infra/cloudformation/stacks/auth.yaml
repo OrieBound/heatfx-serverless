@@ -27,19 +27,30 @@ Resources:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub 'heatfx-${Environment}-users'
+      UsernameConfiguration:
+        CaseSensitive: false
       UsernameAttributes:
         - email
       AutoVerifiedAttributes:
         - email
+      # Explicit sender avoids ambiguous defaults on some accounts; pool creation does not need SES.
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
       Schema:
         - Name: email
           AttributeDataType: String
           Mutable: true
           Required: true
+          StringAttributeConstraints:
+            MinLength: '1'
+            MaxLength: '2048'
         - Name: nickname
           AttributeDataType: String
           Mutable: true
           Required: false
+          StringAttributeConstraints:
+            MinLength: '0'
+            MaxLength: '2048'
       Policies:
         PasswordPolicy:
           MinimumLength: 8
