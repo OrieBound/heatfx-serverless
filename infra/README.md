@@ -35,6 +35,7 @@ infra/
 │   ├── api/
 │   │   └── src/              # Lambda handler (Node 20)
 │   └── .gitignore            # ignores .packaged/
+├── diagrams/                 # heatfx-architecture.drawio (AWS architecture + CI/CD)
 └── terraform/                # Reserved (see terraform/README.md)
 ```
 
