@@ -33,9 +33,11 @@ Resources:
         - email
       AutoVerifiedAttributes:
         - email
-      # Explicit sender avoids ambiguous defaults on some accounts; pool creation does not need SES.
-      EmailConfiguration:
-        EmailSendingAccount: COGNITO_DEFAULT
+      # Required when Cognito sends signup / verification email (COGNITO_DEFAULT).
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailMessage: 'Your HeatFX verification code is {####}'
+        EmailSubject: 'Verify your email'
       Schema:
         - Name: email
           AttributeDataType: String
@@ -44,12 +46,13 @@ Resources:
           StringAttributeConstraints:
             MinLength: '1'
             MaxLength: '2048'
+        # Optional standard attribute — avoid MinLength 0 in StringAttributeConstraints (often rejected).
         - Name: nickname
           AttributeDataType: String
           Mutable: true
           Required: false
           StringAttributeConstraints:
-            MinLength: '0'
+            MinLength: '1'
             MaxLength: '2048'
       Policies:
         PasswordPolicy:
