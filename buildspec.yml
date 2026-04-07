@@ -1,0 +1,88 @@
+# CodePipeline → CodeBuild: deploy heatfx-{ENV} first, then read outputs, Next.js build, S3 sync, invalidation.
+# CodeBuild env (from pipeline stack): COGNITO_DOMAIN_PREFIX, ENV, PACKAGING_BUCKET, APP_* , CORS_ALLOW_ORIGIN
+
+version: 0.2
+
+env:
+  variables:
+    ENV: prod
+    PACKAGING_BUCKET: heatfx-cfn-artifacts-prod
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - echo "Node $(node -v)"
+
+  pre_build:
+    commands:
+      - |
+        if [ -z "${COGNITO_DOMAIN_PREFIX:-}" ]; then
+          echo "COGNITO_DOMAIN_PREFIX must be set on the CodeBuild project (pipeline parameter)."
+          exit 1
+        fi
+      - npm ci
+
+  build:
+    commands:
+      - export AWS_REGION="${AWS_REGION:-us-east-1}"
+      - export STACK_NAME="${STACK_NAME:-heatfx-${ENV}}"
+      - export TEMPLATE_DIR="$CODEBUILD_SRC_DIR/infra/cloudformation"
+      - mkdir -p "$TEMPLATE_DIR/.packaged"
+      - export PACKAGED_TPL="$TEMPLATE_DIR/.packaged/parent.yaml"
+      - |
+        if ! aws s3api head-bucket --bucket "$PACKAGING_BUCKET" 2>/dev/null; then
+          echo "Creating packaging bucket $PACKAGING_BUCKET"
+          if [ "$AWS_REGION" = "us-east-1" ]; then
+            aws s3api create-bucket --bucket "$PACKAGING_BUCKET" --region "$AWS_REGION"
+          else
+            aws s3api create-bucket --bucket "$PACKAGING_BUCKET" --region "$AWS_REGION" \
+              --create-bucket-configuration LocationConstraint="$AWS_REGION"
+          fi
+        fi
+      - |
+        aws cloudformation package \
+          --template-file "$TEMPLATE_DIR/parent.yaml" \
+          --s3-bucket "$PACKAGING_BUCKET" \
+          --output-template-file "$PACKAGED_TPL" \
+          --region "$AWS_REGION"
+      - |
+        aws cloudformation deploy \
+          --stack-name "$STACK_NAME" \
+          --template-file "$PACKAGED_TPL" \
+          --parameter-overrides \
+            "Environment=${ENV}" \
+            "CognitoDomainPrefix=${COGNITO_DOMAIN_PREFIX}" \
+            "AppCallbackUrls=${APP_CALLBACK_URLS:-http://localhost:3000/auth/callback}" \
+            "AppLogoutUrls=${APP_LOGOUT_URLS:-http://localhost:3000/}" \
+            "CorsAllowOrigin=${CORS_ALLOW_ORIGIN:-*}" \
+          --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+          --region "$AWS_REGION"
+      - |
+        out() {
+          aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text --region "$AWS_REGION"
+        }
+        export NEXT_PUBLIC_API_URL="$(out HttpApiUrl)"
+        export NEXT_PUBLIC_COGNITO_USER_POOL_ID="$(out UserPoolId)"
+        export NEXT_PUBLIC_COGNITO_CLIENT_ID="$(out UserPoolClientId)"
+        CF="$(out CloudFrontDomainName)"
+        export NEXT_PUBLIC_COGNITO_DOMAIN="${COGNITO_DOMAIN_PREFIX}.auth.${AWS_REGION}.amazoncognito.com"
+        export NEXT_PUBLIC_COGNITO_REDIRECT_URI="https://${CF}/auth/callback"
+        echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL"
+        echo "NEXT_PUBLIC_COGNITO_REDIRECT_URI=$NEXT_PUBLIC_COGNITO_REDIRECT_URI"
+        for v in NEXT_PUBLIC_API_URL NEXT_PUBLIC_COGNITO_USER_POOL_ID NEXT_PUBLIC_COGNITO_CLIENT_ID CF; do
+          val="${!v}"
+          if [ -z "${val:-}" ]; then echo "Missing stack output for $v"; exit 1; fi
+        done
+      - npm run build
+      - export SITE_BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='SiteBucketName'].OutputValue" --output text --region "$AWS_REGION")
+      - export DIST_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text --region "$AWS_REGION")
+      - test -n "$SITE_BUCKET" && test -n "$DIST_ID"
+      - aws s3 sync "$CODEBUILD_SRC_DIR/out/" "s3://$SITE_BUCKET/" --delete --region "$AWS_REGION"
+      - aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+
+cache:
+  paths:
+    - node_modules/**/*

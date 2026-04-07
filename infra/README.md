@@ -94,7 +94,7 @@ After you have a CloudFront URL, update **Auth** callback/logout URLs (redeploy 
 
 ```bash
 npm run build
-aws cloudformation describe-stacks --stack-name heatfx-dev --query "Stacks[0].Outputs" --output table
+aws cloudformation describe-stacks --stack-name heatfx-prod --query "Stacks[0].Outputs" --output table
 # Sync out/ to SiteBucketName; invalidate CloudFrontDistributionId
 aws s3 sync out/ "s3://SITE_BUCKET/" --delete
 aws cloudfront create-invalidation --distribution-id DISTRIBUTION_ID --paths "/*"
@@ -103,12 +103,22 @@ aws cloudfront create-invalidation --distribution-id DISTRIBUTION_ID --paths "/*
 ## Outputs
 
 ```bash
-aws cloudformation describe-stacks --stack-name heatfx-dev \
+aws cloudformation describe-stacks --stack-name heatfx-prod \
   --query "Stacks[0].Outputs" --output table
 ```
 
 Use **HttpApiUrl**, **UserPoolId**, **UserPoolClientId**, **CloudFrontDomainName**, and bucket names in `.env.local` / CI.
 
+## CodePipeline (prod, us-east-1)
+
+Template **[cloudformation/pipeline/pipeline.yaml](cloudformation/pipeline/pipeline.yaml)** creates **CodePipeline** + **CodeBuild** using your **CodeConnections** GitHub link. **`buildspec.yml`** (repo root) deploys **`heatfx-prod`**, then builds Next.js from **stack outputs**, syncs **`out/`**, invalidates CloudFront.
+
+1. Use **prod** credentials: `aws sts get-caller-identity` should show account **809575175638** (or your current prod).
+2. Copy **[cloudformation/pipeline/pipeline-params.example.json](cloudformation/pipeline/pipeline-params.example.json)** → **`pipeline-params.json`**; set a **globally unique** **`CognitoDomainPrefix`**; confirm **ConnectionArn** and **FullRepositoryId**.
+3. Deploy: **`./scripts/deploy-pipeline.sh`** or **`.\scripts\deploy-pipeline.ps1`**. The script **refuses to run** unless `sts get-caller-identity` is account **809575175638** (override with **`HEATFX_EXPECT_PIPELINE_ACCOUNT`** or **`HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK=1`** if you know what you are doing). Raw **`aws cloudformation deploy`** has no such guard.
+
+Push to **`main`** to run the pipeline, or **Release change** in the console. After the first app URL exists, add CloudFront **https** URLs to **`AppCallbackUrls` / `AppLogoutUrls` / `CorsAllowOrigin`** in **`pipeline-params.json`** and redeploy the **heatfx-pipeline** stack.
+
 ## Tear down
 
-Delete the **parent** stack (`heatfx-dev`). CloudFormation removes nested stacks and their resources. Empty the recordings bucket if versioning/objects block deletion.
+Delete the **parent** stack (`heatfx-prod`). CloudFormation removes nested stacks and their resources. Empty the recordings bucket if versioning/objects block deletion. Delete **heatfx-pipeline** separately if you created it.

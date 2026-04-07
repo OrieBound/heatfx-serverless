@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: HeatFX - CodePipeline (GitHub via CodeConnections) + CodeBuild (buildspec deploys app stack then builds Next.js)
+
+Parameters:
+  ConnectionArn:
+    Type: String
+    Description: CodeConnections ARN (GitHub) in this account/region
+    Default: 'arn:aws:codeconnections:us-east-1:809575175638:connection/80d61585-3831-4c16-8d8e-b1c64486d2bf'
+
+  FullRepositoryId:
+    Type: String
+    Description: GitHub owner/repo
+    Default: 'OrieBound/heatfx-serverless'
+
+  BranchName:
+    Type: String
+    Default: main
+
+  PipelineName:
+    Type: String
+    Default: heatfx-pipeline
+
+  BuildProjectName:
+    Type: String
+    Default: heatfx-prod-build
+
+  Env:
+    Type: String
+    Default: prod
+
+  PackagingBucket:
+    Type: String
+    Default: heatfx-cfn-artifacts-prod
+
+  CognitoDomainPrefix:
+    Type: String
+    Description: Globally unique Cognito hosted UI prefix (must stay stable per environment)
+    Default: heatfx-orie-prod
+
+  AppCallbackUrls:
+    Type: String
+    Default: 'http://localhost:3000/auth/callback'
+    Description: Comma-separated. After first deploy, add https://YOUR_CF_DOMAIN/auth/callback and redeploy pipeline stack
+
+  AppLogoutUrls:
+    Type: String
+    Default: 'http://localhost:3000/'
+
+  CorsAllowOrigin:
+    Type: String
+    Default: '*'
+    Description: After CloudFront exists, set to https://YOUR_CF_DOMAIN and redeploy pipeline stack
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'heatfx-pipeline-artifacts-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AWSCloudFormationFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudFrontFullAccess
+        - arn:aws:iam::aws:policy/IAMFullAccess
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref BuildProjectName
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        ImagePullCredentialsType: CODEBUILD
+        PrivilegedMode: false
+        EnvironmentVariables:
+          - Name: COGNITO_DOMAIN_PREFIX
+            Type: PLAINTEXT
+            Value: !Ref CognitoDomainPrefix
+          - Name: ENV
+            Type: PLAINTEXT
+            Value: !Ref Env
+          - Name: PACKAGING_BUCKET
+            Type: PLAINTEXT
+            Value: !Ref PackagingBucket
+          - Name: APP_CALLBACK_URLS
+            Type: PLAINTEXT
+            Value: !Ref AppCallbackUrls
+          - Name: APP_LOGOUT_URLS
+            Type: PLAINTEXT
+            Value: !Ref AppLogoutUrls
+          - Name: CORS_ALLOW_ORIGIN
+            Type: PLAINTEXT
+            Value: !Ref CorsAllowOrigin
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
+      TimeoutInMinutes: 90
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: pipeline-exec
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketVersioning
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub '${ArtifactBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: !GetAtt CodeBuildProject.Arn
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref ConnectionArn
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Ref PipelineName
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHub_Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: !Ref FullRepositoryId
+                BranchName: !Ref BranchName
+                OutputArtifactFormat: CODE_ZIP
+                DetectChanges: 'true'
+              OutputArtifacts:
+                - Name: SourceArtifact
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build_and_Deploy
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceArtifact
+              RunOrder: 1
+
+Outputs:
+  PipelineName:
+    Value: !Ref Pipeline
+  PipelineConsoleUrl:
+    Description: Open in console
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${PipelineName}/view'
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
+  CodeBuildProjectName:
+    Value: !Ref CodeBuildProject
