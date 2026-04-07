@@ -4,13 +4,13 @@ Description: HeatFX - CodePipeline (GitHub via CodeConnections) + CodeBuild (bui
 Parameters:
   ConnectionArn:
     Type: String
-    Description: CodeConnections ARN (GitHub) in this account/region
-    Default: 'arn:aws:codeconnections:us-east-1:809575175638:connection/80d61585-3831-4c16-8d8e-b1c64486d2bf'
+    Description: >
+      CodeConnections ARN for GitHub in this account/region (Developer Tools → Connections).
+      Do not commit real values in the template; pass via pipeline-params.json (gitignored) or CLI.
 
   FullRepositoryId:
     Type: String
-    Description: GitHub owner/repo
-    Default: 'OrieBound/heatfx-serverless'
+    Description: GitHub owner/repo (e.g. myorg/my-repo)
 
   BranchName:
     Type: String
@@ -30,12 +30,12 @@ Parameters:
 
   PackagingBucket:
     Type: String
-    Default: heatfx-cfn-artifacts-prod
+    Description: >
+      Globally unique S3 bucket in this account for `aws cloudformation package` uploads (create empty or let buildspec create it).
 
   CognitoDomainPrefix:
     Type: String
-    Description: Globally unique Cognito hosted UI prefix (must stay stable per environment)
-    Default: heatfx-orie-prod
+    Description: Globally unique Cognito hosted UI prefix (must stay stable per environment; choose your own, e.g. heatfx-yourname-prod)
 
   AppCallbackUrls:
     Type: String

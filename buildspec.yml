@@ -3,10 +3,7 @@
 
 version: 0.2
 
-env:
-  variables:
-    ENV: prod
-    PACKAGING_BUCKET: heatfx-cfn-artifacts-prod
+# ENV, PACKAGING_BUCKET, COGNITO_DOMAIN_PREFIX, APP_*, CORS_* are set on the CodeBuild project (pipeline stack).
 
 phases:
   install:

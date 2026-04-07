@@ -14,14 +14,13 @@ if [[ -n "${AWS_PROFILE:-}" ]]; then
 fi
 
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text "${AWS_ARGS[@]}")"
-EXPECT="${HEATFX_EXPECT_PIPELINE_ACCOUNT:-809575175638}"
 echo "Account (caller): $ACCOUNT"
 echo "Region: $REGION"
 
-if [[ -z "${HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK:-}" && "$ACCOUNT" != "$EXPECT" ]]; then
-  echo "ERROR: Wrong AWS account ($ACCOUNT). This pipeline is meant for prod account $EXPECT."
-  echo "Log in with your prod SSO profile, or set HEATFX_EXPECT_PIPELINE_ACCOUNT to match your target account,"
-  echo "or HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK=1 to override (not recommended)."
+# Optional safety: set HEATFX_EXPECT_PIPELINE_ACCOUNT=123456789012 to abort if caller account differs.
+if [[ -n "${HEATFX_EXPECT_PIPELINE_ACCOUNT:-}" && -z "${HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK:-}" && "$ACCOUNT" != "$HEATFX_EXPECT_PIPELINE_ACCOUNT" ]]; then
+  echo "ERROR: Caller account ($ACCOUNT) does not match HEATFX_EXPECT_PIPELINE_ACCOUNT ($HEATFX_EXPECT_PIPELINE_ACCOUNT)."
+  echo "Use the intended AWS profile, adjust HEATFX_EXPECT_PIPELINE_ACCOUNT, or set HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK=1."
   exit 1
 fi
 

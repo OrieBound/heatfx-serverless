@@ -1,9 +1,0 @@
-[
-  { "ParameterKey": "ConnectionArn", "ParameterValue": "arn:aws:codeconnections:us-east-1:809575175638:connection/80d61585-3831-4c16-8d8e-b1c64486d2bf" },
-  { "ParameterKey": "FullRepositoryId", "ParameterValue": "OrieBound/heatfx-serverless" },
-  { "ParameterKey": "BranchName", "ParameterValue": "main" },
-  { "ParameterKey": "CognitoDomainPrefix", "ParameterValue": "heatfx-orie-prod" },
-  { "ParameterKey": "AppCallbackUrls", "ParameterValue": "http://localhost:3000/auth/callback" },
-  { "ParameterKey": "AppLogoutUrls", "ParameterValue": "http://localhost:3000/" },
-  { "ParameterKey": "CorsAllowOrigin", "ParameterValue": "*" }
-]

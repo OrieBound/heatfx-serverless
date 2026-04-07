@@ -13,6 +13,9 @@ node_modules/
 # CloudFormation packaged output (regenerated on each deploy)
 infra/cloudformation/.packaged/
 
+# Pipeline deploy params (account-specific ARNs, repo id); copy from pipeline-params.example.json
+infra/cloudformation/pipeline/pipeline-params.json
+
 # AWS SAM
 .aws-sam/
 samconfig.toml

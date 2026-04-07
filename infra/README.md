@@ -113,11 +113,13 @@ Use **HttpApiUrl**, **UserPoolId**, **UserPoolClientId**, **CloudFrontDomainName
 
 Template **[cloudformation/pipeline/pipeline.yaml](cloudformation/pipeline/pipeline.yaml)** creates **CodePipeline** + **CodeBuild** using your **CodeConnections** GitHub link. **`buildspec.yml`** (repo root) deploys **`heatfx-prod`**, then builds Next.js from **stack outputs**, syncs **`out/`**, invalidates CloudFront.
 
-1. Use **prod** credentials: `aws sts get-caller-identity` should show account **809575175638** (or your current prod).
-2. Copy **[cloudformation/pipeline/pipeline-params.example.json](cloudformation/pipeline/pipeline-params.example.json)** → **`pipeline-params.json`**; set a **globally unique** **`CognitoDomainPrefix`**; confirm **ConnectionArn** and **FullRepositoryId**.
-3. Deploy: **`./scripts/deploy-pipeline.sh`** or **`.\scripts\deploy-pipeline.ps1`**. The script **refuses to run** unless `sts get-caller-identity` is account **809575175638** (override with **`HEATFX_EXPECT_PIPELINE_ACCOUNT`** or **`HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK=1`** if you know what you are doing). Raw **`aws cloudformation deploy`** has no such guard.
+**Account IDs in ARNs:** AWS does not treat account IDs as secrets—they do not grant access by themselves. For a **shared / forkable** repo, avoid committing *your* **ConnectionArn**, **repo id**, or **Cognito prefix** in the template: the stack expects you to pass those as parameters (see below).
 
-Push to **`main`** to run the pipeline, or **Release change** in the console. After the first app URL exists, add CloudFront **https** URLs to **`AppCallbackUrls` / `AppLogoutUrls` / `CorsAllowOrigin`** in **`pipeline-params.json`** and redeploy the **heatfx-pipeline** stack.
+1. In the AWS console, create a **CodeStar/CodeConnections** connection to GitHub; copy the connection **ARN** (it will contain your account ID—that is normal).
+2. Copy **[cloudformation/pipeline/pipeline-params.example.json](cloudformation/pipeline/pipeline-params.example.json)** → **`pipeline-params.json`** (that file is **gitignored**). Replace placeholders: **ConnectionArn**, **FullRepositoryId**, **PackagingBucket** (globally unique S3 name), **CognitoDomainPrefix** (globally unique).
+3. Deploy: **`./scripts/deploy-pipeline.sh`** or **`.\scripts\deploy-pipeline.ps1`**. Optional safety: set **`HEATFX_EXPECT_PIPELINE_ACCOUNT`** to your 12-digit account ID so the script errors if you are on the wrong profile; leave it unset for no check.
+
+Push to your configured branch to run the pipeline, or **Release change** in the console. After the first app URL exists, add CloudFront **https** URLs to **`AppCallbackUrls` / `AppLogoutUrls` / `CorsAllowOrigin`** in **`pipeline-params.json`** and redeploy the **heatfx-pipeline** stack.
 
 ## Tear down
 

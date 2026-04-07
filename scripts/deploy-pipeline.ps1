@@ -13,12 +13,12 @@ $Aws = @('--region', $Region)
 if ($Profile) { $Aws += @('--profile', $Profile) }
 
 $Account = aws sts get-caller-identity --query Account --output text @Aws
-$Expect  = if ($env:HEATFX_EXPECT_PIPELINE_ACCOUNT) { $env:HEATFX_EXPECT_PIPELINE_ACCOUNT } else { '809575175638' }
 Write-Host "Account: $Account"
 Write-Host "Region:  $Region"
 
-if (-not $env:HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK -and $Account -ne $Expect) {
-    throw "Wrong AWS account ($Account). Pipeline deploy expects $Expect. Use prod SSO profile, or set HEATFX_EXPECT_PIPELINE_ACCOUNT, or HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK=1."
+# Optional: set HEATFX_EXPECT_PIPELINE_ACCOUNT to abort if caller account differs.
+if ($env:HEATFX_EXPECT_PIPELINE_ACCOUNT -and -not $env:HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK -and $Account -ne $env:HEATFX_EXPECT_PIPELINE_ACCOUNT) {
+    throw "Caller account ($Account) does not match HEATFX_EXPECT_PIPELINE_ACCOUNT ($($env:HEATFX_EXPECT_PIPELINE_ACCOUNT)). Fix profile or env, or set HEATFX_SKIP_PIPELINE_ACCOUNT_CHECK=1."
 }
 
 $Example = Join-Path $Root 'infra\cloudformation\pipeline\pipeline-params.example.json'
