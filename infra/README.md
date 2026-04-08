@@ -6,9 +6,9 @@ Infrastructure as Code for the HeatFX static app (S3/CloudFront), Cognito auth, 
 
 Today this repo implements AWS with **CloudFormation** under **`infra/cloudformation/`** (parent stack + nested stacks). Optional **CodePipeline + CodeBuild** for GitHub → prod lives under **`infra/cloudformation/pipeline/`** with **`buildspec.yml`** at the repo root.
 
-The **same** resources (data, auth, API, frontend, and optionally CI) *can* be provisioned with **Terraform** (or OpenTofu) instead. That work will live under **`infra/terraform/`** once modules and provider dependencies are added. **Do not** manage the same logical environment with both tools at once—tear down one stack before adopting the other, or you risk conflicting ownership and state drift.
+The **same** resources (data, auth, API, frontend) *can* be provisioned with **Terraform** (or OpenTofu) under **`infra/terraform/`** (see **[terraform/README.md](terraform/README.md)**). **Do not** manage the same logical environment with both tools at once—tear down one stack before adopting the other, or you risk conflicting ownership and state drift.
 
-When you move to Terraform, you will need to **readjust** anything that assumed CloudFormation-only workflows: for example, CI would run **`terraform plan` / `apply`** (and packaging for Lambda) instead of **`aws cloudformation package` / `deploy`**, and pipeline IAM policies must match whatever Terraform creates. Terraform layout and `required_providers` are **not** wired up yet; treat **`infra/terraform/README.md`** as the placeholder until that lands.
+**CloudFormation templates are unchanged**; Terraform ships its own Lambda copy under **`infra/terraform/api/`** (run `npm ci` there before `terraform apply`). Keep it in sync with **`infra/cloudformation/api/`** if you use both paths, or consolidate later. When you use Terraform for prod, **readjust** CI if needed: e.g. **`terraform plan` / `apply`** instead of **`aws cloudformation package` / `deploy`**, and pipeline IAM must match Terraform-created resources if you keep CodePipeline.
 
 ## How deploy works
 
@@ -36,7 +36,7 @@ infra/
 │   │   └── src/              # Lambda handler (Node 20)
 │   └── .gitignore            # ignores .packaged/
 ├── diagrams/                 # heatfx-architecture.drawio (AWS architecture + CI/CD)
-└── terraform/                # Reserved (see terraform/README.md)
+└── terraform/                # Optional Terraform mirror (see terraform/README.md)
 ```
 
 ## What gets created

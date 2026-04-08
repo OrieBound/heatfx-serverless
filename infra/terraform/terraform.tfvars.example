@@ -1,0 +1,27 @@
+# Copy to terraform.tfvars (gitignored) and fill in values.
+# aws configure --profile orie-prod  OR  export AWS_PROFILE=orie-prod
+
+aws_region  = "us-east-1"
+environment = "prod"
+
+# Globally unique in this region/account for Cognito hosted UI:
+cognito_domain_prefix = "heatfx-yourname-prod"
+
+# After first apply, add your real CloudFront HTTPS URLs and re-apply.
+app_callback_urls = [
+  "http://localhost:3000/auth/callback",
+  # "https://YOUR_DIST.cloudfront.net/auth/callback",
+]
+app_logout_urls = [
+  "http://localhost:3000/",
+  # "https://YOUR_DIST.cloudfront.net/",
+]
+
+# Tighten after you know the static site origin (must match browser Origin header).
+cors_allow_origin = "*"
+
+# Optional: match old CloudFormation name exactly (default is heatfx-<environment>-sessions)
+# dynamodb_sessions_table_name = "heatfx-sessions"
+
+# Optional: override Lambda source path (default is infra/terraform/api)
+# lambda_source_dir = "D:/Projects/portfolio/heatfx/infra/terraform/api"
