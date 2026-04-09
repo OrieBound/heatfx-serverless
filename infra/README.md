@@ -8,7 +8,9 @@ Today this repo implements AWS with **CloudFormation** under **`infra/cloudforma
 
 The **same** resources (data, auth, API, frontend) *can* be provisioned with **Terraform** (or OpenTofu) under **`infra/terraform/`** (see **[terraform/README.md](terraform/README.md)**). **Do not** manage the same logical environment with both tools at once—tear down one stack before adopting the other, or you risk conflicting ownership and state drift.
 
-**CloudFormation templates are unchanged**; Terraform ships its own Lambda copy under **`infra/terraform/api/`** (run `npm ci` there before `terraform apply`). Keep it in sync with **`infra/cloudformation/api/`** if you use both paths, or consolidate later. When you use Terraform for prod, **readjust** CI if needed: e.g. **`terraform plan` / `apply`** instead of **`aws cloudformation package` / `deploy`**, and pipeline IAM must match Terraform-created resources if you keep CodePipeline.
+**CloudFormation templates are unchanged**; Terraform ships its own Lambda copy under **`infra/terraform/api/`** (run `npm ci` there before `terraform apply`). Keep it in sync with **`infra/cloudformation/api/`** if you use both paths, or consolidate later.
+
+**Terraform CI:** **`infra/terraform/pipeline/`** defines a **separate** CodePipeline + CodeBuild stack (and S3/DynamoDB for **app** Terraform state) using **`buildspec.terraform.yml`**. The original **`buildspec.yml`** + **`infra/cloudformation/pipeline/`** remain the CloudFormation/GitHub path—do not mix both pipelines against the same environment without intent.
 
 ## How deploy works
 
@@ -36,7 +38,8 @@ infra/
 │   │   └── src/              # Lambda handler (Node 20)
 │   └── .gitignore            # ignores .packaged/
 ├── diagrams/                 # heatfx-architecture.drawio (AWS architecture + CI/CD)
-└── terraform/                # Optional Terraform mirror (see terraform/README.md)
+└── terraform/                # App stack + optional pipeline/ (see terraform/README.md)
+    └── pipeline/             # CodePipeline for Terraform + buildspec.terraform.yml
 ```
 
 ## What gets created

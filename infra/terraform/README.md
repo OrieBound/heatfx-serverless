@@ -32,9 +32,16 @@ cd infra/terraform
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars: cognito_domain_prefix, callback URLs, etc.
 
-terraform init
+# Local state (no S3 backend yet):
+terraform init -backend=false
 terraform plan
 terraform apply
+```
+
+If you use **remote state** (after deploying **`pipeline/`**), copy **`backend.hcl.example`** → **`backend.hcl`**, fill bucket and lock table from pipeline outputs, then:
+
+```bash
+terraform init -backend-config=backend.hcl -migrate-state
 ```
 
 After apply, use outputs for `.env.local` / CI: `http_api_url`, `user_pool_id`, `user_pool_client_id`, `cloudfront_domain_name`, bucket names, etc.
@@ -43,9 +50,9 @@ After apply, use outputs for `.env.local` / CI: `http_api_url`, `user_pool_id`, 
 terraform output
 ```
 
-## Backend (optional)
+## Backend
 
-By default state is **local** (`terraform.tfstate`). For teams, add an S3 + DynamoDB (or Terraform Cloud) backend in a new `backend.tf` or `-backend-config` file—do not commit secrets.
+`backend.tf` defines an **S3** backend; attributes are supplied at **`terraform init`** (`-backend-config` or **`-backend=false`** for local-only). See **`backend.hcl.example`**.
 
 ## Cognito + CloudFront follow-up
 
@@ -53,9 +60,9 @@ By default state is **local** (`terraform.tfstate`). For teams, add an S3 + Dyna
 2. Note **`cloudfront_domain_name`** from outputs.
 3. Add `https://<cloudfront>/auth/callback` and `https://<cloudfront>/` to **`app_callback_urls`** / **`app_logout_urls`**, set **`cors_allow_origin`** to `https://<cloudfront>`, and **`terraform apply`** again.
 
-## CI / pipeline
+## CI / pipeline (Terraform-only)
 
-CodePipeline + `buildspec.yml` still target CloudFormation. If you deploy only with Terraform, replace that flow with **`terraform plan` / `apply`** (and the same `npm ci` + optional `npm run build` / `s3 sync` / CloudFront invalidation using Terraform outputs).
+A separate root **`pipeline/`** provisions **CodePipeline + CodeBuild** that run repo root **`buildspec.terraform.yml`** (Terraform apply for this stack, then Next build + S3 sync + invalidation). See **[pipeline/README.md](pipeline/README.md)**. That path does **not** use **`buildspec.yml`** (CloudFormation).
 
 ## Tear down
 

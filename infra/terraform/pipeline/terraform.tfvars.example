@@ -1,0 +1,29 @@
+# Copy to terraform.tfvars (gitignored) or use:
+#   terraform apply -var-file=terraform.tfvars
+#
+# Do not commit real ARNs or account-specific values to a public repo.
+
+aws_region  = "us-east-1"
+environment = "prod"
+
+github_repository_id = "OWNER/REPO-NAME"
+github_branch        = "main"
+
+# Option A — reuse an existing GitHub CodeStar connection:
+use_existing_connection = true
+connection_arn          = "arn:aws:codestar-connections:REGION:ACCOUNT_ID:connection/CONNECTION_UUID"
+
+# Option B — let Terraform create a new connection (then complete OAuth in AWS console):
+# use_existing_connection = false
+# connection_arn          = ""
+
+cognito_domain_prefix = "heatfx-your-unique-prefix-prod"
+
+app_callback_urls = [
+  "http://localhost:3000/auth/callback",
+]
+app_logout_urls = [
+  "http://localhost:3000/",
+]
+
+cors_allow_origin = "*"

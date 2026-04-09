@@ -1,6 +1,6 @@
 check "lambda_node_modules" {
   assert {
-    condition = fileexists("${local.lambda_source_dir}/node_modules/@aws-sdk/client-dynamodb/package.json")
+    condition     = fileexists("${local.lambda_source_dir}/node_modules/@aws-sdk/client-dynamodb/package.json")
     error_message = "Install Lambda dependencies before apply: cd infra/terraform/api && npm ci"
   }
 }
@@ -20,17 +20,17 @@ data "archive_file" "api_lambda" {
 module "data" {
   source = "./modules/data"
 
-  environment        = var.environment
+  environment         = var.environment
   sessions_table_name = local.sessions_table
 }
 
 module "auth" {
   source = "./modules/auth"
 
-  environment             = var.environment
-  cognito_domain_prefix   = var.cognito_domain_prefix
-  app_callback_urls       = var.app_callback_urls
-  app_logout_urls         = var.app_logout_urls
+  environment           = var.environment
+  cognito_domain_prefix = var.cognito_domain_prefix
+  app_callback_urls     = var.app_callback_urls
+  app_logout_urls       = var.app_logout_urls
 }
 
 module "frontend" {
@@ -42,8 +42,8 @@ module "frontend" {
 module "api" {
   source = "./modules/api"
 
-  environment            = var.environment
-  lambda_zip_path        = data.archive_file.api_lambda.output_path
+  environment             = var.environment
+  lambda_zip_path         = data.archive_file.api_lambda.output_path
   lambda_source_code_hash = data.archive_file.api_lambda.output_base64sha256
 
   user_pool_id           = module.auth.user_pool_id

@@ -1,0 +1,10 @@
+# Copy to backend.hcl (gitignored). Values come from pipeline outputs after `infra/terraform/pipeline` apply:
+#   terraform_state_bucket, terraform_lock_table, terraform_state_key
+#
+# terraform init -backend-config=backend.hcl
+
+bucket         = "heatfx-tf-state-YOUR_ACCOUNT_ID-us-east-1"
+key            = "heatfx/prod/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "heatfx-tf-locks-prod-YOUR_ACCOUNT_ID"
+encrypt        = true
