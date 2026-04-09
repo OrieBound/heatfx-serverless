@@ -1,5 +1,7 @@
 # CodePipeline → CodeBuild: Terraform apply (app stack) + Next.js static export + S3 sync + CloudFront invalidation.
 # Does not use CloudFormation. Env vars are set on the CodeBuild project by infra/terraform/pipeline.
+#
+# CodeBuild runs each top-level command in /bin/sh (dash): no `pipefail`. Use one multiline block so `cd` persists.
 
 version: 0.2
 
@@ -32,20 +34,20 @@ phases:
 
   build:
     commands:
-      - set -euo pipefail
-      - cd "$CODEBUILD_SRC_DIR/infra/terraform"
       - |
+        set -eu
+        cd "$CODEBUILD_SRC_DIR/infra/terraform"
         terraform init -input=false \
           -backend-config="bucket=${TF_STATE_BUCKET}" \
           -backend-config="key=${TF_STATE_KEY}" \
           -backend-config="region=${AWS_REGION}" \
           -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
           -backend-config="encrypt=true"
-      - terraform apply -input=false -auto-approve
-      - cd "$CODEBUILD_SRC_DIR"
-      - npm ci
-      - npm run build
-      - SITE_BUCKET=$(cd infra/terraform && terraform output -raw site_bucket_name)
-      - DIST_ID=$(cd infra/terraform && terraform output -raw cloudfront_distribution_id)
-      - aws s3 sync out/ "s3://${SITE_BUCKET}/" --delete
-      - aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+        terraform apply -input=false -auto-approve
+        cd "$CODEBUILD_SRC_DIR"
+        npm ci
+        npm run build
+        SITE_BUCKET=$(cd infra/terraform && terraform output -raw site_bucket_name)
+        DIST_ID=$(cd infra/terraform && terraform output -raw cloudfront_distribution_id)
+        aws s3 sync out/ "s3://${SITE_BUCKET}/" --delete
+        aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
