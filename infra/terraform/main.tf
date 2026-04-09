@@ -50,7 +50,7 @@ module "api" {
   user_pool_client_id    = module.auth.user_pool_client_id
   sessions_table_name    = module.data.sessions_table_name
   recordings_bucket_name = module.data.recordings_bucket_name
-  cors_allow_origin      = var.cors_allow_origin
+  cors_allow_origins     = var.cors_allow_origins
 
   depends_on = [module.data, module.auth]
 }

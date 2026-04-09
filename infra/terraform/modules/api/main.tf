@@ -89,7 +89,7 @@ resource "aws_lambda_function" "api" {
     variables = {
       SESSIONS_TABLE_NAME    = var.sessions_table_name
       RECORDINGS_BUCKET_NAME = var.recordings_bucket_name
-      CORS_ALLOW_ORIGIN      = var.cors_allow_origin
+      CORS_ALLOW_ORIGINS     = join(",", var.cors_allow_origins)
       USER_POOL_ID           = var.user_pool_id
     }
   }
@@ -100,7 +100,7 @@ resource "aws_apigatewayv2_api" "http" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins  = [var.cors_allow_origin]
+    allow_origins  = var.cors_allow_origins
     allow_methods  = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     allow_headers  = ["*"]
     expose_headers = []

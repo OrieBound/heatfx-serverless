@@ -1,6 +1,8 @@
 # HeatFX Terraform CI pipeline (AWS only)
 
-This folder is a **separate Terraform root** from `../` (the app stack). It creates:
+This folder is a **separate Terraform root** from `../` (the app stack). Run all commands from **`infra/terraform/pipeline`**. To work on the **app** stack instead, **`cd ..`** to `infra/terraform` — do **not** use `cd infra/terraform` from here (that path does not exist). **`backend.hcl`** is only for the parent app root, not this folder.
+
+It creates:
 
 | Resource | Purpose |
 |----------|---------|
@@ -63,7 +65,7 @@ See repo root **`buildspec.terraform.yml`**. It expects env vars **`TF_STATE_BUC
 
 ## After first successful deploy
 
-Add your **CloudFront https** URLs to **`app_callback_urls`** / **`app_logout_urls`**, set **`cors_allow_origin`**, `terraform apply` this pipeline stack again (updates CodeBuild env), then re-run the pipeline or push a commit.
+Add your **CloudFront https** URLs to **`app_callback_urls`** / **`app_logout_urls`**, set **`cors_allow_origins`** (list), `terraform apply` this pipeline stack again (updates CodeBuild env), then re-run the pipeline or push a commit.
 
 ## Tear down
 

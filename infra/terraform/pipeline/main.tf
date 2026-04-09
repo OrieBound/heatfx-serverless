@@ -168,8 +168,8 @@ resource "aws_codebuild_project" "app" {
       value = jsonencode(var.app_logout_urls)
     }
     environment_variable {
-      name  = "TF_VAR_cors_allow_origin"
-      value = var.cors_allow_origin
+      name  = "TF_VAR_cors_allow_origins"
+      value = jsonencode(var.cors_allow_origins)
     }
   }
 

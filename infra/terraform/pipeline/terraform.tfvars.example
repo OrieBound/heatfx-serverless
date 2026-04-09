@@ -9,11 +9,11 @@ environment = "prod"
 github_repository_id = "OWNER/REPO-NAME"
 github_branch        = "main"
 
-# Option A — reuse an existing GitHub CodeStar connection:
+# Prefer reusing one GitHub connection for every pipeline (CodeConnections or legacy codestar-connections ARN both work):
 use_existing_connection = true
-connection_arn          = "arn:aws:codestar-connections:REGION:ACCOUNT_ID:connection/CONNECTION_UUID"
+connection_arn          = "arn:aws:codeconnections:REGION:ACCOUNT_ID:connection/CONNECTION_UUID"
 
-# Option B — let Terraform create a new connection (then complete OAuth in AWS console):
+# Option B — let Terraform create a new connection (name heatfx-terraform-<environment>), then complete OAuth in AWS:
 # use_existing_connection = false
 # connection_arn          = ""
 
@@ -26,4 +26,7 @@ app_logout_urls = [
   "http://localhost:3000/",
 ]
 
-cors_allow_origin = "*"
+cors_allow_origins = [
+  "https://YOUR_DIST.cloudfront.net",
+  "http://localhost:3000",
+]

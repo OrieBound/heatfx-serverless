@@ -26,21 +26,51 @@ const cognito = new CognitoIdentityProviderClient({});
 
 const TABLE        = process.env.SESSIONS_TABLE_NAME;
 const BUCKET       = process.env.RECORDINGS_BUCKET_NAME;
-const ORIGIN       = process.env.CORS_ALLOW_ORIGIN || '*';
 const USER_POOL_ID = process.env.USER_POOL_ID;
 const ADMIN_GROUP  = 'admins';
 
-const headers = {
-  'content-type': 'application/json',
-  'access-control-allow-origin': ORIGIN,
-  'access-control-allow-headers': 'authorization,content-type',
-};
+/** Comma-separated list from Terraform; legacy single CORS_ALLOW_ORIGIN still supported. */
+const CORS_RAW =
+  process.env.CORS_ALLOW_ORIGINS ||
+  process.env.CORS_ALLOW_ORIGIN ||
+  '*';
+const ALLOW_ORIGINS = CORS_RAW === '*'
+  ? ['*']
+  : CORS_RAW.split(',').map((s) => s.trim()).filter(Boolean);
+
+function corsHeader(event) {
+  const req =
+    event.headers?.origin ??
+    event.headers?.Origin ??
+    '';
+  if (ALLOW_ORIGINS.includes('*')) {
+    return req || '*';
+  }
+  if (req && ALLOW_ORIGINS.includes(req)) {
+    return req;
+  }
+  return ALLOW_ORIGINS[0] || '*';
+}
+
+function headers(event) {
+  return {
+    'content-type': 'application/json',
+    'access-control-allow-origin': corsHeader(event),
+    'access-control-allow-headers': 'authorization,content-type',
+  };
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function ok(body)      { return { statusCode: 200, headers, body: JSON.stringify(body) }; }
-function created(body) { return { statusCode: 201, headers, body: JSON.stringify(body) }; }
-function err(code, msg){ return { statusCode: code, headers, body: JSON.stringify({ error: msg }) }; }
+function ok(event, body) {
+  return { statusCode: 200, headers: headers(event), body: JSON.stringify(body) };
+}
+function created(event, body) {
+  return { statusCode: 201, headers: headers(event), body: JSON.stringify(body) };
+}
+function err(event, code, msg) {
+  return { statusCode: code, headers: headers(event), body: JSON.stringify({ error: msg }) };
+}
 
 function getClaims(event) {
   return event.requestContext?.authorizer?.jwt?.claims ?? null;
@@ -102,13 +132,13 @@ async function createSession(event, sub) {
   const claims = getClaims(event);
   let body;
   try { body = JSON.parse(event.body || '{}'); }
-  catch { return err(400, 'Invalid JSON body'); }
+  catch { return err(event, 400, 'Invalid JSON body'); }
 
   const { gridWidthPx, gridHeightPx, aspectRatio, durationMs, eventCounts, events, settingSnapshots } = body;
-  if (!events || !Array.isArray(events)) return err(400, 'events array required');
+  if (!events || !Array.isArray(events)) return err(event, 400, 'events array required');
   const dMs = Number(durationMs);
   if (!Number.isFinite(dMs) || dMs < 0 || dMs > 120_000) {
-    return err(400, 'durationMs must be between 0 and 120000');
+    return err(event, 400, 'durationMs must be between 0 and 120000');
   }
 
   // Enforce per-user recording cap
@@ -122,7 +152,7 @@ async function createSession(event, sub) {
     Select: 'COUNT',
   }));
   if ((countResult.Count ?? 0) >= MAX_RECORDINGS_PER_USER) {
-    return err(429, `Recording limit reached (max ${MAX_RECORDINGS_PER_USER}). Please delete an existing recording to save a new one.`);
+    return err(event, 429, `Recording limit reached (max ${MAX_RECORDINGS_PER_USER}). Please delete an existing recording to save a new one.`);
   }
 
   const sessionId = randomUUID();
@@ -154,7 +184,7 @@ async function createSession(event, sub) {
     },
   }));
 
-  return created({ sessionId, createdAt });
+  return created(event, { sessionId, createdAt });
 }
 
 async function listSessions(event, sub) {
@@ -182,7 +212,7 @@ async function listSessions(event, sub) {
     };
   });
 
-  return ok({ sessions });
+  return ok(event, { sessions });
 }
 
 async function getSession(event, sub, sessionId) {
@@ -198,11 +228,11 @@ async function getSession(event, sub, sessionId) {
   }));
 
   const item = result.Items?.[0];
-  if (!item) return err(404, 'Session not found');
+  if (!item) return err(event, 404, 'Session not found');
 
   const o   = sessionFromItem(item);
   const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: o.s3Key }), { expiresIn: 300 });
-  return ok({ ...o, eventsUrl: url });
+  return ok(event, { ...o, eventsUrl: url });
 }
 
 async function deleteSession(event, sub, sessionId) {
@@ -218,7 +248,7 @@ async function deleteSession(event, sub, sessionId) {
   }));
 
   const item = result.Items?.[0];
-  if (!item) return err(404, 'Session not found');
+  if (!item) return err(event, 404, 'Session not found');
   const o = sessionFromItem(item);
 
   await Promise.all([
@@ -226,13 +256,13 @@ async function deleteSession(event, sub, sessionId) {
     s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: o.s3Key })),
   ]);
 
-  return ok({ deleted: sessionId });
+  return ok(event, { deleted: sessionId });
 }
 
 // ── admin — recordings ────────────────────────────────────────────────────────
 
 async function adminListAllSessions(event) {
-  if (!isAdmin(event)) return err(403, 'Forbidden');
+  if (!isAdmin(event)) return err(event, 403, 'Forbidden');
 
   const items = [];
   let lastKey;
@@ -258,11 +288,11 @@ async function adminListAllSessions(event) {
     }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-  return ok({ sessions });
+  return ok(event, { sessions });
 }
 
 async function adminGetSession(event, sessionId) {
-  if (!isAdmin(event)) return err(403, 'Forbidden');
+  if (!isAdmin(event)) return err(event, 403, 'Forbidden');
 
   const result = await dynamo.send(new ScanCommand({
     TableName: TABLE,
@@ -271,15 +301,15 @@ async function adminGetSession(event, sessionId) {
   }));
 
   const item = result.Items?.[0];
-  if (!item) return err(404, 'Session not found');
+  if (!item) return err(event, 404, 'Session not found');
 
   const o   = sessionFromItem(item);
   const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: o.s3Key }), { expiresIn: 300 });
-  return ok({ ...o, eventsUrl: url });
+  return ok(event, { ...o, eventsUrl: url });
 }
 
 async function adminDeleteSession(event, sessionId) {
-  if (!isAdmin(event)) return err(403, 'Forbidden');
+  if (!isAdmin(event)) return err(event, 403, 'Forbidden');
 
   const result = await dynamo.send(new ScanCommand({
     TableName: TABLE,
@@ -288,7 +318,7 @@ async function adminDeleteSession(event, sessionId) {
   }));
 
   const item = result.Items?.[0];
-  if (!item) return err(404, 'Session not found');
+  if (!item) return err(event, 404, 'Session not found');
   const o = sessionFromItem(item);
 
   await Promise.all([
@@ -296,14 +326,14 @@ async function adminDeleteSession(event, sessionId) {
     s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: o.s3Key })),
   ]);
 
-  return ok({ deleted: sessionId });
+  return ok(event, { deleted: sessionId });
 }
 
 // ── admin — group management ──────────────────────────────────────────────────
 
 /** GET /api/admin/admins — list all members of the admins group */
 async function adminListAdmins(event) {
-  if (!isAdmin(event)) return err(403, 'Forbidden');
+  if (!isAdmin(event)) return err(event, 403, 'Forbidden');
 
   const result = await cognito.send(new ListUsersInGroupCommand({
     UserPoolId: USER_POOL_ID,
@@ -317,16 +347,16 @@ async function adminListAdmins(event) {
     enabled:  u.Enabled,
   }));
 
-  return ok({ admins });
+  return ok(event, { admins });
 }
 
 /** POST /api/admin/admins — grant admin to a user { email } */
 async function adminGrant(event) {
-  if (!isAdmin(event)) return err(403, 'Forbidden');
+  if (!isAdmin(event)) return err(event, 403, 'Forbidden');
   let body;
-  try { body = JSON.parse(event.body || '{}'); } catch { return err(400, 'Invalid JSON'); }
+  try { body = JSON.parse(event.body || '{}'); } catch { return err(event, 400, 'Invalid JSON'); }
   const { email } = body;
-  if (!email) return err(400, 'email required');
+  if (!email) return err(event, 400, 'email required');
 
   await cognito.send(new AdminAddUserToGroupCommand({
     UserPoolId: USER_POOL_ID,
@@ -334,21 +364,21 @@ async function adminGrant(event) {
     GroupName:  ADMIN_GROUP,
   }));
 
-  return ok({ granted: email.trim().toLowerCase() });
+  return ok(event, { granted: email.trim().toLowerCase() });
 }
 
 /** DELETE /api/admin/admins — revoke admin from a user { email } */
 async function adminRevoke(event) {
-  if (!isAdmin(event)) return err(403, 'Forbidden');
+  if (!isAdmin(event)) return err(event, 403, 'Forbidden');
   let body;
-  try { body = JSON.parse(event.body || '{}'); } catch { return err(400, 'Invalid JSON'); }
+  try { body = JSON.parse(event.body || '{}'); } catch { return err(event, 400, 'Invalid JSON'); }
   const { email } = body;
-  if (!email) return err(400, 'email required');
+  if (!email) return err(event, 400, 'email required');
 
   // Prevent self-revoke
   const callerEmail = getClaims(event)?.email ?? '';
   if (email.trim().toLowerCase() === callerEmail.toLowerCase()) {
-    return err(400, 'You cannot revoke your own admin access');
+    return err(event, 400, 'You cannot revoke your own admin access');
   }
 
   await cognito.send(new AdminRemoveUserFromGroupCommand({
@@ -357,7 +387,7 @@ async function adminRevoke(event) {
     GroupName:  ADMIN_GROUP,
   }));
 
-  return ok({ revoked: email.trim().toLowerCase() });
+  return ok(event, { revoked: email.trim().toLowerCase() });
 }
 
 // ── router ────────────────────────────────────────────────────────────────────
@@ -367,18 +397,18 @@ async function route(event) {
   const path   = event.rawPath || '';
 
   if (path === '/health' && method === 'GET') {
-    return ok({ status: 'ok', service: 'heatfx-api', table: TABLE, bucket: BUCKET });
+    return ok(event, { status: 'ok', service: 'heatfx-api', table: TABLE, bucket: BUCKET });
   }
 
   // Diagnostic: returns the raw JWT claims so we can verify what API Gateway passes
   if (path === '/api/admin/claims' && method === 'GET') {
     const claims = getClaims(event);
     const raw    = claims?.['cognito:groups'];
-    return ok({ claims, cognitoGroupsRaw: raw, cognitoGroupsType: typeof raw, isAdmin: isAdmin(event) });
+    return ok(event, { claims, cognitoGroupsRaw: raw, cognitoGroupsType: typeof raw, isAdmin: isAdmin(event) });
   }
 
   const sub = getSub(event);
-  if (!sub) return err(401, 'Unauthorized');
+  if (!sub) return err(event, 401, 'Unauthorized');
 
   // ── Admin — group management ──
   if (path === '/api/admin/admins' && method === 'GET')    return adminListAdmins(event);
@@ -400,7 +430,7 @@ async function route(event) {
   if (sessionMatch && method === 'GET')    return getSession(event, sub, sessionMatch[1]);
   if (sessionMatch && method === 'DELETE') return deleteSession(event, sub, sessionMatch[1]);
 
-  return err(404, 'Not found');
+  return err(event, 404, 'Not found');
 }
 
 export const handler = async (event) => {
@@ -408,6 +438,6 @@ export const handler = async (event) => {
     return await route(event);
   } catch (e) {
     console.error('Unhandled Lambda error:', e);
-    return err(500, e?.message ?? 'Internal server error');
+    return err(event, 500, e?.message ?? 'Internal server error');
   }
 };

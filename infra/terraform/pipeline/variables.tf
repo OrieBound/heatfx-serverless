@@ -53,10 +53,10 @@ variable "app_logout_urls" {
   description = "Cognito logout URLs."
 }
 
-variable "cors_allow_origin" {
-  type        = string
-  description = "API CORS origin; use CloudFront https URL after first deploy."
-  default     = "*"
+variable "cors_allow_origins" {
+  type        = list(string)
+  description = "API CORS allowed origins (e.g. CloudFront https + http://localhost:3000 for local dev)."
+  default     = ["*"]
 }
 
 variable "terraform_state_key" {

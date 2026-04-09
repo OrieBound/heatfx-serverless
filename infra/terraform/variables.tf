@@ -25,10 +25,10 @@ variable "app_logout_urls" {
   description = "Sign-out URLs after logout (e.g. https://d123.cloudfront.net/)."
 }
 
-variable "cors_allow_origin" {
-  type        = string
-  description = "Value for API Gateway HTTP API CORS Allow-Origin and Lambda CORS header. Use your CloudFront HTTPS origin in production."
-  default     = "*"
+variable "cors_allow_origins" {
+  type        = list(string)
+  description = "Browser origins allowed for API Gateway CORS and Lambda Access-Control-Allow-Origin (reflects request Origin when it matches)."
+  default     = ["*"]
 }
 
 variable "dynamodb_sessions_table_name" {

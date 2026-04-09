@@ -1,0 +1,8 @@
+---
+description: Use Bash for terminal commands and examples (not PowerShell).
+alwaysApply: true
+---
+
+# Terminal commands
+
+When giving run instructions, shell examples, or one-liners for this repo, use **Bash** syntax (POSIX-style paths like `/d/Projects/...` in Git Bash, or `cd repo-root && ...`). Do not default to PowerShell unless the user explicitly asks for it.
