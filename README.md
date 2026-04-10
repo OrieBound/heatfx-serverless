@@ -34,6 +34,12 @@ To point the app at a deployed backend while developing, copy **`.env.example`**
 
 Do **not** manage the same environment with both tools at once. Details and parameters: **[infra/README.md](infra/README.md)**.
 
+## Architecture diagram
+
+High-level **HeatFX serverless architecture** on AWS (browser, static frontend, HTTP API + Lambda, Cognito, DynamoDB, S3, and optional CI/CD):
+
+![HeatFX serverless architecture](docs/heatfx-serverless-architecture.jpg)
+
 ## Implementation status
 
 | Area | Status |
@@ -46,7 +52,7 @@ Do **not** manage the same environment with both tools at once. Details and para
 | Cognito auth, **My Recordings**, admin flows (where implemented) | Done |
 | CloudFormation parent + nested stacks + infra docs | Done |
 | Terraform mirror + docs | Done |
-| CI/CD for Terraform (`infra/terraform/pipeline/`, `buildspec.terraform.yml`) | In repo — deploy pipeline stack, authorize GitHub connection |
+| CI/CD for Terraform (`infra/terraform/pipeline/`, `buildspec.terraform.yml`) | Documented in **[infra/terraform/README.md](infra/terraform/README.md)** — pipeline stack + GitHub connection |
 
 ## Build (static export for S3 / CloudFront)
 
@@ -54,12 +60,12 @@ Do **not** manage the same environment with both tools at once. Details and para
 npm run build
 ```
 
-Output is **`out/`**. Sync to the **site bucket** from CloudFormation or Terraform outputs, then **invalidate CloudFront** (see **[infra/README.md](infra/README.md)**).
+Output is **`out/`**. To smoke-test the static files locally: **`npm run preview`** (serves **`out/`** on port 3000). Sync to the **site bucket** from CloudFormation or Terraform outputs, then **invalidate CloudFront** (see **[infra/README.md](infra/README.md)**).
 
 ## Deploy to AWS (summary)
 
 1. Configure the AWS CLI (e.g. SSO profile).
 2. **CloudFormation**: follow **[infra/README.md](infra/README.md)** or run **`scripts/deploy-aws.sh`** / **`deploy-aws.ps1`** with **`PACKAGING_BUCKET`**, **`COGNITO_DOMAIN_PREFIX`**, etc.
-3. **Terraform**: **`infra/terraform/README.md`** — `npm ci` in **`infra/terraform/api`**, **`terraform.tfvars`**, **`terraform apply`**, then build + **`aws s3 sync out/`** + invalidation.
+3. **Terraform**: follow **[infra/terraform/README.md](infra/terraform/README.md)** — full steps from a **GitHub clone** to **CloudFront** (CodePipeline path or laptop-only). Short version: **`npm ci`** in **`infra/terraform/api`**, **`terraform.tfvars`**, **`terraform apply`**, then **`npm run build`** + **`aws s3 sync out/`** + invalidation (or let **`buildspec.terraform.yml`** do that in CI).
 
 After deploy, set **`NEXT_PUBLIC_*`** in **`.env.local`** (or your host’s env) from stack/terraform **outputs** for a working auth + API connection.
