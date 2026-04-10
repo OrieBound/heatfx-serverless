@@ -28,3 +28,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Cursor (editor rules, logs — local only; not part of the app)
+.cursor/
