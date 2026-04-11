@@ -43,6 +43,10 @@ interface AuthContextValue {
   signUp: (email: string, password: string, nickname?: string) => Promise<void>;
   confirmSignUp: (email: string, code: string) => Promise<void>;
   resendCode: (email: string) => Promise<void>;
+  /** Cognito ForgotPassword — sends a verification code to the user’s verified email. */
+  requestPasswordReset: (email: string) => Promise<void>;
+  /** Cognito ConfirmForgotPassword — code from email + new password. */
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<void>;
   updateProfile: (nickname: string) => Promise<void>;
 }
 
@@ -81,6 +85,8 @@ const AuthContext = createContext<AuthContextValue>({
   login: () => {}, logout: () => {},
   signIn: async () => {}, signUp: async () => {},
   confirmSignUp: async () => {}, resendCode: async () => {},
+  requestPasswordReset: async () => {},
+  confirmPasswordReset: async () => {},
   updateProfile: async () => {},
 });
 
@@ -193,8 +199,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, [getPool]);
 
+  const requestPasswordReset = useCallback((email: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const pool = getPool();
+      const cognitoUser = new CognitoUser({ Username: email.trim().toLowerCase(), Pool: pool });
+      cognitoUser.forgotPassword({
+        onSuccess: () => resolve(),
+        onFailure: (err) => reject(err),
+        inputVerificationCode: () => resolve(),
+      });
+    });
+  }, [getPool]);
+
+  const confirmPasswordReset = useCallback(
+    (email: string, code: string, newPassword: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        const pool = getPool();
+        const cognitoUser = new CognitoUser({ Username: email.trim().toLowerCase(), Pool: pool });
+        cognitoUser.confirmPassword(code.trim(), newPassword, {
+          onSuccess: () => resolve(),
+          onFailure: (err) => reject(err),
+        });
+      });
+    },
+    [getPool]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, idToken, isLoading, login, logout, signIn, signUp, confirmSignUp, resendCode, updateProfile }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        idToken,
+        isLoading,
+        login,
+        logout,
+        signIn,
+        signUp,
+        confirmSignUp,
+        resendCode,
+        requestPasswordReset,
+        confirmPasswordReset,
+        updateProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

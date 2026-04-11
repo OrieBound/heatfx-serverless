@@ -1,28 +1,31 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 function friendlyError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes('UsernameExistsException'))   return 'An account with this email already exists.';
-  if (msg.includes('InvalidPasswordException'))  return 'Password must be at least 8 characters with uppercase, lowercase, and a number.';
-  if (msg.includes('InvalidParameterException')) return 'Please enter a valid email address.';
-  if (msg.includes('TooManyRequestsException'))  return 'Too many attempts. Please wait a moment.';
+  if (msg.includes('CodeMismatchException'))    return 'Incorrect code. Check your email and try again.';
+  if (msg.includes('ExpiredCodeException'))     return 'This code has expired. Request a new code from “Forgot password”.';
+  if (msg.includes('InvalidPasswordException')) return 'Password must be at least 8 characters with uppercase, lowercase, and a number.';
+  if (msg.includes('LimitExceededException'))   return 'Too many attempts. Try again later.';
+  if (msg.includes('TooManyRequestsException')) return 'Too many attempts. Please wait a moment.';
   return 'Something went wrong. Please try again.';
 }
 
-export default function SignupPage() {
-  const { user, isLoading, signUp } = useAuth();
+function ResetPasswordContent() {
+  const { user, isLoading, confirmPasswordReset, requestPasswordReset } = useAuth();
   const router = useRouter();
+  const params = useSearchParams();
+  const emailParam = params.get('email')?.trim().toLowerCase() ?? '';
 
-  const [username, setUsername] = useState('');
-  const [email, setEmail]       = useState('');
+  const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
-  const [confirm, setConfirm]   = useState('');
-  const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [resent, setResent] = useState(false);
 
   useEffect(() => {
     if (!isLoading && user) router.replace('/');
@@ -30,7 +33,7 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    if (!emailParam || !code.trim()) return;
     if (password !== confirm) {
       setError('Passwords do not match.');
       return;
@@ -39,10 +42,11 @@ export default function SignupPage() {
       setError('Password must be at least 8 characters.');
       return;
     }
+    setError('');
     setLoading(true);
     try {
-      await signUp(email, password, username);
-      router.push(`/auth/verify?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+      await confirmPasswordReset(emailParam, code, password);
+      router.replace('/auth/login?reset=success');
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -50,64 +54,78 @@ export default function SignupPage() {
     }
   };
 
+  const handleResend = async () => {
+    if (!emailParam) return;
+    setError('');
+    try {
+      await requestPasswordReset(emailParam);
+      setResent(true);
+      setTimeout(() => setResent(false), 5000);
+    } catch (err) {
+      setError(friendlyError(err));
+    }
+  };
+
+  if (!emailParam) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.card}>
+          <div style={styles.logo}>HeatFX</div>
+          <h1 style={styles.heading}>Reset password</h1>
+          <p style={styles.sub}>Start from the forgot-password step so we know which account to reset.</p>
+          <a href="/auth/forgot-password" style={{ ...styles.link, display: 'block', textAlign: 'center' }}>
+            Forgot password
+          </a>
+          <p style={{ ...styles.footer, marginTop: 16 }}>
+            <a href="/auth/login" style={styles.link}>Sign in</a>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.logo}>HeatFX</div>
-        <h1 style={styles.heading}>Create an account</h1>
+        <h1 style={styles.heading}>Choose a new password</h1>
         <p style={styles.sub}>
-          Free forever. Save and revisit your recordings anytime.
+          We sent a code to <strong>{emailParam}</strong>. Enter the code from your email, then your new password
+          twice.
         </p>
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
-            <label style={styles.label} htmlFor="username">
-              Display name <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
-            </label>
+            <label style={styles.label} htmlFor="code">Verification code</label>
             <input
-              id="username"
+              id="code"
               type="text"
-              autoComplete="nickname"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              placeholder="e.g. heatfx_user"
-              style={styles.input}
-            />
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              This is what appears in the top-right instead of your email.
-            </span>
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label} htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              placeholder="Code from email"
               required
               style={styles.input}
             />
           </div>
 
           <div style={styles.field}>
-            <label style={styles.label} htmlFor="password">Password</label>
+            <label style={styles.label} htmlFor="password">New password</label>
             <input
               id="password"
               type="password"
               autoComplete="new-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="Min. 8 characters"
+              placeholder="Min. 8 characters, upper, lower, number"
               required
               style={styles.input}
             />
           </div>
 
           <div style={styles.field}>
-            <label style={styles.label} htmlFor="confirm">Confirm password</label>
+            <label style={styles.label} htmlFor="confirm">Confirm new password</label>
             <input
               id="confirm"
               type="password"
@@ -123,18 +141,30 @@ export default function SignupPage() {
           {error && <p style={styles.error}>{error}</p>}
 
           <button type="submit" disabled={loading} style={styles.button}>
-            {loading ? 'Creating account…' : 'Create account'}
+            {loading ? 'Updating…' : 'Update password'}
           </button>
         </form>
 
+        <p style={styles.hint}>
+          <button type="button" onClick={handleResend} style={styles.textBtn}>
+            Resend code
+          </button>
+          {resent ? <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>Check your inbox.</span> : null}
+        </p>
+
         <p style={styles.footer}>
-          Already have an account?{' '}
-          <a href="/auth/login" style={styles.link}>Sign in</a>
-          {' · '}
-          <a href="/auth/forgot-password" style={styles.link}>Forgot password?</a>
+          <a href="/auth/login" style={styles.link}>Back to sign in</a>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--bg)' }} />}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }
 
@@ -172,6 +202,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 28px',
     fontSize: '0.88rem',
     color: 'var(--text-muted)',
+    lineHeight: 1.55,
   },
   form: {
     display: 'flex',
@@ -219,8 +250,14 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     width: '100%',
   },
+  hint: {
+    marginTop: 16,
+    textAlign: 'center',
+    fontSize: '0.85rem',
+    color: 'var(--text-muted)',
+  },
   footer: {
-    marginTop: 24,
+    marginTop: 20,
     textAlign: 'center',
     fontSize: '0.85rem',
     color: 'var(--text-muted)',
@@ -229,5 +266,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#6366f1',
     fontWeight: 600,
     textDecoration: 'none',
+  },
+  textBtn: {
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    color: '#6366f1',
+    fontWeight: 600,
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+    font: 'inherit',
   },
 };

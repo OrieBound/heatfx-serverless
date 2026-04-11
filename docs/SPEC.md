@@ -1,6 +1,6 @@
 # HeatFX — Product & technical specification
 
-**Status:** Development / portfolio reference — suitable for personal prod testing; backend–frontend integration is still evolving (see *Current limitations*).
+**Status:** Portfolio / reference implementation — core product flows (record, results, cloud save, **My Recordings**, infra) are implemented and wired end-to-end. Treat **production** hardening as your responsibility (see *Current limitations* and deploy sections).
 
 **Source:** [github.com/OrieBound/heatfx-serverless](https://github.com/OrieBound/heatfx-serverless)
 
@@ -8,9 +8,14 @@
 
 ## 1. What HeatFX is
 
-HeatFX is a **serverless web application** that lets a user **record mouse activity** on a grid (up to about **60 seconds**), then inspect the session as a **heatmap** and a **time-based replay** of the cursor. The goal is to make interaction data **visible and replayable** without capturing screen video—only **events** (positions, clicks, drags, timestamps, etc.).
+HeatFX is a **serverless web application** that lets a user **record mouse activity** on a grid, then inspect the session as a **heatmap** and a **time-based replay** of the cursor. The goal is to make interaction data **visible and replayable** without capturing screen video—only **events** (positions, clicks, drags, scroll, timestamps, optional chaos-mode snapshots, etc.).
 
-The same project doubles as a **reference architecture**: static site on **S3 + CloudFront**, **API Gateway + Lambda**, **DynamoDB**, **S3** for payloads, **Cognito** for auth. **Today** this is defined in **CloudFormation** under `infra/cloudformation/` and deployable from the repo. A **Terraform / OpenTofu** layout is **planned** under `infra/terraform/` — use **one** IaC tool per environment (do not manage the same resources with both).
+**Recording length (accurate for marketing copy):**
+
+- **Guests (not signed in):** up to **30 seconds** per session (fixed cap).
+- **Signed-in users:** choose **30, 60, 90, or 120 seconds** in settings (default length starts at 30s until changed). The API accepts saved sessions with **`durationMs` up to 120,000** to match the UI cap.
+
+The same project doubles as a **reference architecture**: static site on **S3 + CloudFront**, **API Gateway + Lambda**, **DynamoDB**, **S3** for payloads, **Cognito** for auth. **Infrastructure** is available as **CloudFormation** under `infra/cloudformation/` **or** **Terraform** under `infra/terraform/` — use **one** IaC tool per environment (do not manage the same resources with both).
 
 ---
 
@@ -23,7 +28,7 @@ These themes align with the copy on the in-app **Why HeatFX** page (`/why`).
 | **Invisible data, made visible** | Pointer events are generated constantly; HeatFX surfaces them as heatmaps and replays without embedding traditional page analytics. |
 | **Replay without video** | Stores **event streams**, not pixels—lightweight, no screen capture, replay driven by timestamps (e.g. `requestAnimationFrame` on the client). |
 | **Serverless reference** | End-to-end example: auth, API, DB, object storage, CDN, IaC wired together—not a single isolated Lambda demo. |
-| **Serverless economics** | Pay-per-use services; low traffic can sit near **zero** when idle (free-tier framing as in the app copy). |
+| **Serverless economics** | Pay-per-use services; **low traffic is inexpensive** and there are no always-on servers. AWS pricing and free-tier limits **change**—verify current docs for your account (the in-app copy uses illustrative “free tier” framing). |
 | **Usability and polish** | Intended to be **fun to use** (themes, replay, interaction) as well as technically interesting. |
 | **Open & self-hostable** | Full source and templates on GitHub; deploy into **your** AWS account; optional **GitHub → CodePipeline → CodeBuild** for production. |
 
@@ -37,11 +42,12 @@ These themes align with the copy on the in-app **Why HeatFX** page (`/why`).
 
 - **Frontend:** **Next.js 14** (App Router), **TypeScript**, **React 18**, **static export** (`output: 'export'`) → plain files in `out/` served from **S3** behind **CloudFront** (no Node server at runtime for the UI).
 - **Backend:** One **Node.js 20** **Lambda** behind **API Gateway (HTTP API)**; **JWT authorizer** validates **Cognito** tokens before the handler runs for protected routes.
-- **Data:** **DynamoDB** for session **metadata**; **S3** for **raw event JSON** (e.g. under session-oriented keys); presigned URLs for controlled reads where implemented.
+- **Data:** **DynamoDB** for session **metadata**; **S3** for **raw event JSON** (session-oriented keys). The API returns **presigned S3 URLs** so the browser can load large event payloads without streaming them through Lambda.
 - **Auth:** **Amazon Cognito** User Pool + SPA app client. The app uses **custom pages** and **SRP** via **`amazon-cognito-identity-js`**. CloudFormation still provisions a **Cognito domain prefix** and **OAuth callback / logout URLs** (e.g. `/auth/callback`) for redirect-based flows alongside the SPA client.
-- **Infrastructure (today):** **CloudFormation** **parent stack** with **four nested stacks**: **data**, **auth**, **api** (SAM transform), **frontend**. Templates: `infra/cloudformation/parent.yaml`, `stacks/`, `nested/`.
-- **CI/CD (optional, prod):** **AWS CodePipeline** + **CodeBuild**, triggered from **GitHub** via **CodeConnections**. **`buildspec.yml`** (repo root) runs `cloudformation package` / `deploy` for **`heatfx-prod`**, reads stack outputs into **`NEXT_PUBLIC_*`**, runs **`npm run build`**, **`aws s3 sync`** on `out/`, and **CloudFront invalidation**. Template: `infra/cloudformation/pipeline/pipeline.yaml`.
-- **Infrastructure (planned):** **`infra/terraform/`** — mirror the same resources in Terraform when modules and providers are added; retire or avoid overlapping CloudFormation stacks first.
+- **Infrastructure (CloudFormation):** **Parent stack** with **four nested stacks**: **data**, **auth**, **api** (SAM transform), **frontend**. Templates: `infra/cloudformation/parent.yaml`, `stacks/`, `nested/`.
+- **Infrastructure (Terraform):** **`infra/terraform/`** — modules **data**, **auth**, **api**, **frontend** plus root wiring; Lambda source under **`infra/terraform/api/`** (keep in sync with **`infra/cloudformation/api/`** if you use both tools in different accounts).
+- **CI/CD — CloudFormation path:** **CodePipeline** + **CodeBuild**, GitHub via **CodeConnections**. **`buildspec.yml`** packages and deploys the CFN parent stack, then builds Next.js and syncs **`out/`** to S3 + invalidates CloudFront. Pipeline template: `infra/cloudformation/pipeline/pipeline.yaml`.
+- **CI/CD — Terraform path:** Terraform under **`infra/terraform/pipeline/`** provisions a **separate** pipeline + state bucket; **`buildspec.terraform.yml`** runs **`terraform apply`** for the app stack, then **`npm run build`**, **`aws s3 sync`**, invalidation. See **`infra/terraform/README.md`** for a full clone-to-CloudFront checklist.
 
 ### 3.2 Frontend (high level)
 
@@ -55,18 +61,23 @@ These themes align with the copy on the in-app **Why HeatFX** page (`/why`).
 |------|----------|
 | Next.js app | `app/`, `components/`, `contexts/` |
 | IaC (CloudFormation) | `infra/cloudformation/` |
-| Pipeline + CodeBuild project | `infra/cloudformation/pipeline/pipeline.yaml` |
-| Pipeline parameters (example) | `infra/cloudformation/pipeline/pipeline-params.example.json` |
-| Prod build / deploy in CI | `buildspec.yml` (repo root) |
-| Lambda source | `infra/cloudformation/api/src/` |
-| App stack deploy (local / script) | `scripts/deploy-aws.sh`, `scripts/deploy-aws.ps1` |
-| Pipeline stack deploy | `scripts/deploy-pipeline.sh`, `scripts/deploy-pipeline.ps1` |
+| IaC (Terraform app stack) | `infra/terraform/` (root `.tf` + `modules/`) |
+| IaC (Terraform CI + remote state bucket) | `infra/terraform/pipeline/` |
+| Pipeline + CodeBuild (CFN path) | `infra/cloudformation/pipeline/pipeline.yaml` |
+| Pipeline parameters (example, CFN) | `infra/cloudformation/pipeline/pipeline-params.example.json` |
+| Prod build / deploy in CI (CFN) | `buildspec.yml` (repo root) |
+| Prod build / deploy in CI (Terraform) | `buildspec.terraform.yml` (repo root) |
+| Lambda source (CFN package) | `infra/cloudformation/api/src/` |
+| Lambda source (Terraform zip) | `infra/terraform/api/` |
+| App stack deploy (CFN scripts) | `scripts/deploy-aws.sh`, `scripts/deploy-aws.ps1` |
+| Pipeline stack deploy (CFN scripts) | `scripts/deploy-pipeline.sh`, `scripts/deploy-pipeline.ps1` |
+| Terraform helper (correct working dirs) | `scripts/tf.sh` |
 | IaC narrative + CFN vs TF | `infra/README.md` |
-| Terraform (planned) | `infra/terraform/` |
+| **Terraform deploy guide (clone → CloudFront)** | **`infra/terraform/README.md`** |
 
 ### 3.4 Current limitations (honest status)
 
-The root **README** implementation table still lists items such as **full backend session ingest/finalize**, **results loading from API**, and **complete auth/session management UX** as **pending** or **partial**, with **sessionStorage** used for some flows until wiring is complete. Treat production use as **your own validation** until those milestones match your needs.
+The app **records**, **persists** sessions for signed-in users via the **HTTP API** (DynamoDB + S3), and **My Recordings** loads from the API. **sessionStorage** is still used as a **same-tab handoff** to the Results page after recording or after fetching from S3 in-tab — it is not the system of record. Treat any **production** deployment as **your own validation** (IAM scope, CORS, Cognito callback URLs, and whether you use **CloudFormation or Terraform** for that account).
 
 ---
 
@@ -86,20 +97,23 @@ Open **http://localhost:3000** (or the port Next prints if 3000 is busy).
 ### 4.2 Using the recorder
 
 1. **Start** recording (countdown).
-2. Move, click, and drag in the **grid** for up to **~60 seconds** (or stop early).
-3. Open **View results**.
+2. Move, click, and drag in the **grid** until you **Stop** or hit the **session cap** (**30s** guests; **30 / 60 / 90 / 120s** signed-in, per settings).
+3. Open **View results** (works in-tab for guests; **Save** to cloud requires sign-in).
 4. **Heatmap** tab: density and related controls.
 5. **Replay** tab: playback speed, scrubber, timestamp-driven cursor motion.
+6. **Details** tab: session metadata and counts.
 
 In-app **user-facing guide:** **`/about`** (linked from the recorder as “User Guide”). **Technical stack narrative:** **`/stack`**, **motivation:** **`/why`**.
 
-Copy **`.env.example`** to **`.env.local`** and set **`NEXT_PUBLIC_*`** when pointing at a deployed API and Cognito (see deploy outputs below). **Do not commit** `.env.local` (it is gitignored).
+**Password reset:** **`/auth/forgot-password`** (email verification code from Cognito) → **`/auth/reset-password`**. Works on localhost when **`.env.local`** points at your user pool; no separate infra beyond Cognito **account recovery** (already enabled in templates).
+
+Copy **`.env.example`** to **`.env.local`** and set **`NEXT_PUBLIC_*`** when pointing at a deployed API and Cognito (see deploy outputs below). **Do not commit** `.env.local` (it is gitignored). For a **production** static build, set **`NEXT_PUBLIC_COGNITO_REDIRECT_URI`** to your live **`https://…/auth/callback`** (repo provides **`npm run build:prod-site`** for the default HeatFX domain).
 
 ---
 
 ## 5. Deploying HeatFX in another AWS account
 
-This section matches **`infra/README.md`**, the deploy scripts, and the optional pipeline.
+This section summarizes **CloudFormation** and **Terraform** paths. **Step-by-step Terraform** (clone → variables → pipeline or manual → CloudFront) lives in **`infra/terraform/README.md`**.
 
 ### 5.1 Prerequisites
 
@@ -187,14 +201,30 @@ Configure **`.env.local`** (or CI secrets) from outputs: **`HttpApiUrl`**, **`Us
 
 - Delete the **app parent** stack (e.g. `heatfx-dev` or `heatfx-prod`). CloudFormation removes nested stacks; empty **S3** buckets if deletion is blocked by contents.
 - Delete **`heatfx-pipeline`** separately if you created the pipeline stack.
-- **Before adopting Terraform:** remove CloudFormation stacks so **Terraform** is the single owner of resources; then add providers/modules under **`infra/terraform`** before `apply`.
+- **Switching IaC:** do not manage the **same** resources with both tools; destroy one stack type before applying the other for the same environment.
+
+### 5.7 Terraform — clone from GitHub to CloudFront
+
+**Canonical instructions:** [`infra/terraform/README.md`](../infra/terraform/README.md) (paths **A** = CodePipeline + GitHub, **B** = laptop-only).
+
+**Summary — Path A (CI):**
+
+1. Clone / fork the repo; install **Terraform**, **Node 20+**, **AWS CLI**; authenticate to AWS.
+2. **`infra/terraform/pipeline/`**: copy **`terraform.tfvars.example`** → **`terraform.tfvars`**; set **GitHub repo**, **branch**, **CodeStar/CodeConnections ARN** (or create a new connection and complete OAuth), **globally unique `cognito_domain_prefix`**, callback URLs (localhost first), **`cors_allow_origins`** (e.g. include `http://localhost:3000`; optionally `["*"]` for first deploy then tighten to your CloudFront HTTPS origin).
+3. **`terraform init`** && **`terraform apply -var-file=terraform.tfvars`** in **`pipeline/`**.
+4. Push code to the configured GitHub repo; **Release change** (or trigger on push) on **CodePipeline**. **CodeBuild** runs **`buildspec.terraform.yml`**: remote **S3 state**, **`terraform apply`** for the app, **`npm run build`**, **`aws s3 sync`**, **CloudFront invalidation**.
+5. After the first success, add **HTTPS CloudFront** URLs to Cognito callbacks and **`cors_allow_origins`**; re-apply pipeline Terraform (updates CodeBuild env) and run the pipeline again (or **`terraform apply`** locally for the app stack with **`backend.hcl`** from pipeline outputs).
+
+**Summary — Path B (no CI):** **`infra/terraform/api` → `npm ci`**; **`infra/terraform`** → **`terraform.tfvars`**, **`terraform init -backend=false`**, **`terraform apply`**; from repo root **`npm run build`** + **`aws s3 sync`** + invalidation using **`terraform output`**.
+
+**Files:** **`backend.hcl.example`**, **`terraform.tfvars.example`**, **`pipeline/terraform.tfvars.example`** (all placeholders; real **`*.tfvars`** and **`backend.hcl`** are gitignored).
 
 ---
 
 ## 6. Security & Git hygiene
 
 - **Never commit:** `.env`, `.env.local`, `.env.*.local`, AWS access keys, or session tokens.
-- **`.gitignore`** excludes `.env*` variants, **`infra/cloudformation/.packaged/`**, and **`infra/cloudformation/pipeline/pipeline-params.json`** (use the **`.example.json`** in git as a template).
+- **`.gitignore`** excludes `.env*` variants, **`infra/cloudformation/.packaged/`**, **`infra/cloudformation/pipeline/pipeline-params.json`** (use the **`.example.json`** in git as a template), and **`.cursor/`** (editor-local; do not commit).
 - Prefer **IAM roles / SSO** locally; rotate anything accidentally committed.
 
 ---
@@ -206,6 +236,20 @@ Configure **`.env.local`** (or CI secrets) from outputs: **`HttpApiUrl`**, **`Us
 | **GitHub repository** | [https://github.com/OrieBound/heatfx-serverless](https://github.com/OrieBound/heatfx-serverless) |
 | **In-app narrative** | `/why` (Why HeatFX), `/stack` (HeatFX Stack), `/about` (user guide) |
 | **Infra deep dive** | [`infra/README.md`](../infra/README.md) |
+| **Terraform: clone → deploy → CloudFront** | [`infra/terraform/README.md`](../infra/terraform/README.md) |
 | **Local + build notes** | [`README.md`](../README.md) |
-| **Pipeline template** | [`infra/cloudformation/pipeline/pipeline.yaml`](../infra/cloudformation/pipeline/pipeline.yaml) |
-| **CI build spec** | [`buildspec.yml`](../buildspec.yml) (repo root) |
+| **Pipeline template (CloudFormation)** | [`infra/cloudformation/pipeline/pipeline.yaml`](../infra/cloudformation/pipeline/pipeline.yaml) |
+| **CI build spec (CloudFormation)** | [`buildspec.yml`](../buildspec.yml) |
+| **CI build spec (Terraform)** | [`buildspec.terraform.yml`](../buildspec.terraform.yml) |
+| **Architecture diagram (image)** | [`docs/heatfx-serverless-architecture.jpg`](heatfx-serverless-architecture.jpg) (also embedded in root [`README.md`](../README.md)) |
+
+---
+
+## 8. Using this spec on your public website
+
+Pull **short, accurate** lines from **§1** (what it is + recording caps), **§2** (themes table or opening question), and **§3.1** (one stack paragraph). Suggested guardrails:
+
+- **Do say:** event-based replay (not video), heatmap + replay + details, serverless on AWS (static site + API + auth + storage), open source / self-hostable, optional GitHub → pipeline.
+- **Do not say:** a single fixed “60 second” cap for everyone—use **§1** caps instead.
+- **Soften:** absolute “zero cost” / “always free tier”—use **economics** wording from the updated theme row or “very low cost at modest traffic.”
+- **Link:** GitHub repo + `/why`, `/stack`, `/about` for depth; root **README** for clone/build; **infra** READMEs for deploy only if you have a “Technical” page.

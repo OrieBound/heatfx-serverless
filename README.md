@@ -1,6 +1,6 @@
 # HeatFX
 
-Serverless web app that records mouse interactions on a grid (up to 60s for signed-in users, shorter for guests), then shows a **heatmap** and **replay**.
+Serverless web app that records mouse interactions on a grid (**guests:** up to **30s**; **signed-in:** **30–120s** per settings), then shows a **heatmap** and **replay**.
 
 ## Local dev
 
@@ -21,6 +21,10 @@ Open [http://localhost:3000](http://localhost:3000). Changes are picked up autom
 - **Guests**: You can record and view results in that session without logging in; those results are **not** saved to the cloud until you sign in and save.
 
 To point the app at a deployed backend while developing, copy **`.env.example`** → **`.env.local`** and set **`NEXT_PUBLIC_*`** from your infra outputs (API URL, Cognito pool, client, domain, redirect URI). Set **`NEXT_PUBLIC_API_URL`** with **no trailing slash** (the client builds paths like `/api/sessions`). See **[infra/README.md](infra/README.md)**.
+
+**Auth:** **Forgot password** lives at **`/auth/forgot-password`** (verification code email from Cognito, then **`/auth/reset-password`**). With **`NEXT_PUBLIC_COGNITO_REDIRECT_URI=http://localhost:3000/auth/callback`**, sign-in and Hosted UI flows work on localhost.
+
+**Production frontend build:** `NEXT_PUBLIC_*` is baked in at build time. Use **`npm run build:prod-site`** so **`NEXT_PUBLIC_COGNITO_REDIRECT_URI`** is set to **`https://heatfx.oriehulan.com/auth/callback`** (override with **`HEATFX_PUBLIC_SITE_ORIGIN`** if your live URL differs). Ensure that exact URL is in your Cognito app client **Callback URLs** (and **`/`** in **Sign out URLs** if you use logout). Then sync **`out/`** to the site bucket and invalidate CloudFront (see **Build** below).
 
 ## Stack
 
@@ -60,7 +64,22 @@ High-level **HeatFX serverless architecture** on AWS (browser, static frontend, 
 npm run build
 ```
 
-Output is **`out/`**. To smoke-test the static files locally: **`npm run preview`** (serves **`out/`** on port 3000). Sync to the **site bucket** from CloudFormation or Terraform outputs, then **invalidate CloudFront** (see **[infra/README.md](infra/README.md)**).
+Output is **`out/`**. For the **live CloudFront / custom domain**, prefer **`npm run build:prod-site`** so the Cognito redirect matches production (see above).
+
+To smoke-test the static files locally: **`npm run preview`** (serves **`out/`** on port 3000). Sync to the **site bucket** from CloudFormation or Terraform outputs, then **invalidate CloudFront** (see **[infra/README.md](infra/README.md)**).
+
+Example (Git Bash, profile **`orie-prod`**, replace distribution id from stack outputs):
+
+```bash
+export AWS_PROFILE=orie-prod
+npm run build:prod-site
+aws s3 sync out/ "s3://heatfx-site-809575175638-us-east-1/" --delete
+DIST=$(aws cloudformation describe-stacks --stack-name heatfx-prod \
+  --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text)
+aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*"
+```
+
+If your stack or bucket names differ, use the values from **`aws cloudformation describe-stacks`** / the console.
 
 ## Deploy to AWS (summary)
 

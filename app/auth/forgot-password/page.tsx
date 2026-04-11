@@ -1,36 +1,24 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 function friendlyError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes('UserNotConfirmedException')) return 'Please verify your email before signing in.';
-  if (msg.includes('NotAuthorizedException'))    return 'Incorrect email or password.';
-  if (msg.includes('UserNotFoundException'))     return 'No account found with that email.';
-  if (msg.includes('TooManyRequestsException'))  return 'Too many attempts. Please wait a moment.';
+  if (msg.includes('LimitExceededException'))   return 'Too many reset attempts. Try again later.';
+  if (msg.includes('TooManyRequestsException')) return 'Too many attempts. Please wait a moment.';
+  if (msg.includes('InvalidParameterException')) return 'Please enter a valid email address.';
   return 'Something went wrong. Please try again.';
 }
 
-function LoginSuccessFromReset() {
-  const params = useSearchParams();
-  if (params.get('reset') !== 'success') return null;
-  return (
-    <p style={styles.success}>
-      Password updated. You can sign in with your new password.
-    </p>
-  );
-}
-
-export default function LoginPage() {
-  const { user, isLoading, signIn } = useAuth();
+export default function ForgotPasswordPage() {
+  const { user, isLoading, requestPasswordReset } = useAuth();
   const router = useRouter();
 
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!isLoading && user) router.replace('/');
@@ -38,18 +26,13 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!email.trim()) return;
     setError('');
     setLoading(true);
     try {
-      await signIn(email, password);
-      router.replace('/');
+      await requestPasswordReset(email);
+      router.push(`/auth/reset-password?email=${encodeURIComponent(email.trim().toLowerCase())}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg.includes('UserNotConfirmedException')) {
-        router.push(`/auth/verify?email=${encodeURIComponent(email)}`);
-        return;
-      }
       setError(friendlyError(err));
     } finally {
       setLoading(false);
@@ -60,12 +43,11 @@ export default function LoginPage() {
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.logo}>HeatFX</div>
-        <h1 style={styles.heading}>Sign in</h1>
-        <p style={styles.sub}>Welcome back. Enter your details below.</p>
-
-        <Suspense fallback={null}>
-          <LoginSuccessFromReset />
-        </Suspense>
+        <h1 style={styles.heading}>Forgot password</h1>
+        <p style={styles.sub}>
+          Enter the email you used to sign up. We&apos;ll email a <strong>one-time verification code</strong> (not
+          a link). On the next screen, enter that code and your new password.
+        </p>
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
@@ -82,32 +64,16 @@ export default function LoginPage() {
             />
           </div>
 
-          <div style={styles.field}>
-            <div style={styles.rowLabel}>
-              <label style={styles.label} htmlFor="password">Password</label>
-              <a href="/auth/forgot-password" style={styles.linkInline}>Forgot password?</a>
-            </div>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              style={styles.input}
-            />
-          </div>
-
           {error && <p style={styles.error}>{error}</p>}
 
           <button type="submit" disabled={loading} style={styles.button}>
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? 'Sending…' : 'Send verification code'}
           </button>
         </form>
 
         <p style={styles.footer}>
-          Don&apos;t have an account?{' '}
+          <a href="/auth/login" style={styles.link}>Back to sign in</a>
+          {' · '}
           <a href="/auth/signup" style={styles.link}>Sign up</a>
         </p>
       </div>
@@ -149,6 +115,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 28px',
     fontSize: '0.88rem',
     color: 'var(--text-muted)',
+    lineHeight: 1.55,
   },
   form: {
     display: 'flex',
@@ -206,27 +173,5 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#6366f1',
     fontWeight: 600,
     textDecoration: 'none',
-  },
-  rowLabel: {
-    display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  linkInline: {
-    color: '#6366f1',
-    fontWeight: 600,
-    fontSize: '0.78rem',
-    textDecoration: 'none',
-    whiteSpace: 'nowrap',
-  },
-  success: {
-    margin: '0 0 16px',
-    padding: '10px 14px',
-    background: 'rgba(34,197,94,0.1)',
-    border: '1px solid #22c55e',
-    borderRadius: 8,
-    color: '#16a34a',
-    fontSize: '0.85rem',
   },
 };
