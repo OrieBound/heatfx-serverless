@@ -22,6 +22,9 @@ Open [http://localhost:3000](http://localhost:3000). Changes are picked up autom
 
 To point the app at a deployed backend while developing, copy **`.env.example`** → **`.env.local`** and set **`NEXT_PUBLIC_*`** from your infra outputs (API URL, Cognito pool, client, domain, redirect URI). Set **`NEXT_PUBLIC_API_URL`** with **no trailing slash** (the client builds paths like `/api/sessions`). See **[infra/README.md](infra/README.md)**.
 
+**If Cognito sign-in suddenly fails:** your **User Pool ID** and **Client ID** in **`.env.local`** must match the pool that still exists in AWS. After a **stack replace** or new environment, old IDs return `ResourceNotFoundException` from Cognito. Refresh values from **`aws cloudformation describe-stacks`** / Terraform outputs, or:  
+`aws cognito-idp list-user-pools --region us-east-1` and **`list-user-pool-clients`** for the `heatfx-*` pool. Re-run **`npm run dev`** after editing **`.env.local`**. Users created in a **deleted** pool must **sign up again** on the new pool.
+
 **Auth:** **Forgot password** lives at **`/auth/forgot-password`** (verification code email from Cognito, then **`/auth/reset-password`**). With **`NEXT_PUBLIC_COGNITO_REDIRECT_URI=http://localhost:3000/auth/callback`**, sign-in and Hosted UI flows work on localhost.
 
 **Production frontend build:** `NEXT_PUBLIC_*` is baked in at build time. Use **`npm run build:prod-site`** so **`NEXT_PUBLIC_COGNITO_REDIRECT_URI`** is set to **`https://heatfx.oriehulan.com/auth/callback`** (override with **`HEATFX_PUBLIC_SITE_ORIGIN`** if your live URL differs). Ensure that exact URL is in your Cognito app client **Callback URLs** (and **`/`** in **Sign out URLs** if you use logout). Then sync **`out/`** to the site bucket and invalidate CloudFront (see **Build** below).

@@ -6,9 +6,16 @@ import { useAuth } from '@/contexts/AuthContext';
 
 function friendlyError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('Missing NEXT_PUBLIC_COGNITO')) {
+    return 'Sign-in is not configured in this build (.env missing pool or client id). Check README and .env.example.';
+  }
   if (msg.includes('UserNotConfirmedException')) return 'Please verify your email before signing in.';
   if (msg.includes('NotAuthorizedException'))    return 'Incorrect email or password.';
   if (msg.includes('UserNotFoundException'))     return 'No account found with that email.';
+  if (msg.includes('ResourceNotFoundException')) return 'Cognito pool or client no longer exists. Update .env.local from your AWS stack outputs.';
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+    return 'Network error talking to Cognito. Check connection, VPN, or ad blockers.';
+  }
   if (msg.includes('TooManyRequestsException'))  return 'Too many attempts. Please wait a moment.';
   return 'Something went wrong. Please try again.';
 }

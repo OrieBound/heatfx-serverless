@@ -18,11 +18,16 @@ import {
 
 // ── Cognito pool ──────────────────────────────────────────────────────────────
 
-const getUserPool = () =>
-  new CognitoUserPool({
-    UserPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!,
-    ClientId:   process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!,
-  });
+const getUserPool = () => {
+  const UserPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ?? '';
+  const ClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '';
+  if (!UserPoolId || !ClientId) {
+    throw new Error(
+      'Missing NEXT_PUBLIC_COGNITO_USER_POOL_ID or NEXT_PUBLIC_COGNITO_CLIENT_ID. Copy .env.example to .env.local and set values from your stack outputs, then restart dev or rebuild.'
+    );
+  }
+  return new CognitoUserPool({ UserPoolId, ClientId });
+};
 
 // ── types ─────────────────────────────────────────────────────────────────────
 

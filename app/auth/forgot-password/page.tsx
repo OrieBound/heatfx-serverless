@@ -6,9 +6,16 @@ import { useAuth } from '@/contexts/AuthContext';
 
 function friendlyError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('Missing NEXT_PUBLIC_COGNITO')) {
+    return 'Auth is not configured in this build. Set Cognito env vars and restart or rebuild.';
+  }
+  if (msg.includes('ResourceNotFoundException')) return 'Cognito pool or client no longer exists. Update .env.local from stack outputs.';
   if (msg.includes('LimitExceededException'))   return 'Too many reset attempts. Try again later.';
   if (msg.includes('TooManyRequestsException')) return 'Too many attempts. Please wait a moment.';
   if (msg.includes('InvalidParameterException')) return 'Please enter a valid email address.';
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+    return 'Network error. Check connection or try again.';
+  }
   return 'Something went wrong. Please try again.';
 }
 
