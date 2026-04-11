@@ -9,6 +9,14 @@ const JITTER_THRESHOLD = 0.001;
 /** Only treat as drag if pointer moved more than this (normalized). Stops tiny movement from stealing clicks. */
 const DRAG_THRESHOLD = 0.015;
 
+/** Clicks on controls inside the grid must not start pointer capture (would steal events from buttons). */
+function isGridChromeTarget(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof Element)) return false;
+  return Boolean(
+    target.closest('button, a[href], input, textarea, select, [role="button"]')
+  );
+}
+
 type MouseButton = 0 | 2;
 
 interface GridDimensions {
@@ -38,6 +46,8 @@ export function useRecordingEvents(
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number; btn: MouseButton } | null>(null);
+  /** Primary pointer (mouse / first touch) for this grid. */
+  const activePointerIdRef = useRef<number | null>(null);
 
   const push = useCallback((e: RecordedEvent) => {
     eventsRef.current.push(e);
@@ -54,7 +64,30 @@ export function useRecordingEvents(
 
     const getRect = () => el.getBoundingClientRect();
 
-    const onMouseDown = (ev: MouseEvent) => {
+    const clearPointer = (pointerId: number) => {
+      if (activePointerIdRef.current !== pointerId) return;
+      activePointerIdRef.current = null;
+      try {
+        el.releasePointerCapture(pointerId);
+      } catch {
+        /* not captured */
+      }
+    };
+
+    const onPointerDown = (ev: PointerEvent) => {
+      if (activePointerIdRef.current !== null) return;
+      if (isGridChromeTarget(ev.target)) return;
+      if (ev.pointerType === 'mouse') {
+        if (ev.button !== 0 && ev.button !== 2) return;
+      } else if (ev.button !== 0) {
+        return;
+      }
+      activePointerIdRef.current = ev.pointerId;
+      try {
+        el.setPointerCapture(ev.pointerId);
+      } catch {
+        /* ignore */
+      }
       if (ev.button === 2) ev.preventDefault();
       const rect = getRect();
       const { x, y } = normalize(ev.clientX, ev.clientY, rect);
@@ -64,7 +97,8 @@ export function useRecordingEvents(
       isDraggingRef.current = false;
     };
 
-    const onMouseMove = (ev: MouseEvent) => {
+    const onPointerMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== activePointerIdRef.current) return;
       const rect = getRect();
       const { x, y } = normalize(ev.clientX, ev.clientY, rect);
       const now = Date.now();
@@ -105,7 +139,8 @@ export function useRecordingEvents(
       push({ t: t(), type: 'move', x, y });
     };
 
-    const onMouseUp = (ev: MouseEvent) => {
+    const onPointerUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== activePointerIdRef.current) return;
       const rect = getRect();
       const { x, y } = normalize(ev.clientX, ev.clientY, rect);
       const btn = (ev.button === 2 ? 2 : 0) as MouseButton;
@@ -130,6 +165,14 @@ export function useRecordingEvents(
       }
       dragStartRef.current = null;
       isDraggingRef.current = false;
+      clearPointer(ev.pointerId);
+    };
+
+    const onPointerCancel = (ev: PointerEvent) => {
+      if (ev.pointerId !== activePointerIdRef.current) return;
+      dragStartRef.current = null;
+      isDraggingRef.current = false;
+      clearPointer(ev.pointerId);
     };
 
     const onWheel = (ev: WheelEvent) => {
@@ -147,16 +190,26 @@ export function useRecordingEvents(
       ev.preventDefault();
     };
 
-    el.addEventListener('mousedown', onMouseDown);
-    el.addEventListener('mousemove', onMouseMove);
-    el.addEventListener('mouseup', onMouseUp);
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointercancel', onPointerCancel);
     el.addEventListener('wheel', onWheel, { passive: false });
     el.addEventListener('contextmenu', onContextMenu);
 
     return () => {
-      el.removeEventListener('mousedown', onMouseDown);
-      el.removeEventListener('mousemove', onMouseMove);
-      el.removeEventListener('mouseup', onMouseUp);
+      if (activePointerIdRef.current !== null) {
+        try {
+          el.releasePointerCapture(activePointerIdRef.current);
+        } catch {
+          /* */
+        }
+        activePointerIdRef.current = null;
+      }
+      el.removeEventListener('pointerdown', onPointerDown);
+      el.removeEventListener('pointermove', onPointerMove);
+      el.removeEventListener('pointerup', onPointerUp);
+      el.removeEventListener('pointercancel', onPointerCancel);
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('contextmenu', onContextMenu);
     };

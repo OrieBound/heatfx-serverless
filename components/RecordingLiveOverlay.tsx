@@ -34,20 +34,22 @@ export function RecordingLiveOverlay({ gridRef, isActive, theme, color }: Record
     if (!isActive || !gridRef.current) return;
     const el = gridRef.current;
 
-    const getXY = (e: MouseEvent) => {
+    const getXY = (e: PointerEvent) => {
       const rect = el.getBoundingClientRect();
       return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
 
-    const onDown = (e: MouseEvent) => {
-      if (e.button !== 0 && e.button !== 2) return;
+    const onDown = (e: PointerEvent) => {
+      if (e.target instanceof Element && e.target.closest('button, a[href], input, textarea, select')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return;
+      if (e.pointerType !== 'mouse' && e.button !== 0) return;
       const { x, y } = getXY(e);
       startRef.current = { x, y };
       isDraggingRef.current = false;
       setCurrentRect(null);
     };
 
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       if (e.buttons === 0) return;
       const start = startRef.current;
       if (!start) return;
@@ -65,8 +67,8 @@ export function RecordingLiveOverlay({ gridRef, isActive, theme, color }: Record
       setCurrentRect({ x1, y1, x2, y2, t: Date.now() });
     };
 
-    const onUp = (e: MouseEvent) => {
-      if (e.button !== 0 && e.button !== 2) return;
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return;
       const start = startRef.current;
       if (start && isDraggingRef.current) {
         const { x, y } = getXY(e);
@@ -81,13 +83,13 @@ export function RecordingLiveOverlay({ gridRef, isActive, theme, color }: Record
       setCurrentRect(null);
     };
 
-    el.addEventListener('mousedown', onDown);
-    el.addEventListener('mousemove', onMove);
-    el.addEventListener('mouseup', onUp);
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
     return () => {
-      el.removeEventListener('mousedown', onDown);
-      el.removeEventListener('mousemove', onMove);
-      el.removeEventListener('mouseup', onUp);
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
     };
   }, [isActive, theme, gridRef]);
 

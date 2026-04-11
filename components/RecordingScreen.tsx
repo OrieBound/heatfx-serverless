@@ -12,6 +12,7 @@ import { RecordingSidebar } from './RecordingSidebar';
 import { ChaosOverlay } from './ChaosOverlay';
 import { chaosHitTypographyRems } from '@/components/cursorVisualUtils';
 import { useRecordingEvents } from '@/hooks/useRecordingEvents';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { AuthButton } from './AuthButton';
 import { useCursorColor } from '@/contexts/CursorColorContext';
 import {
@@ -138,6 +139,7 @@ export function RecordingScreen() {
   const chaosActive = chaosObstacleType !== 'none';
   const { user, idToken } = useAuth();
   const nextRecordingCapMs = user ? recordingDurationMs : RECORDING_DURATION_FREE_MS;
+  const compact = useMediaQuery('(max-width: 900px)');
 
   // Chaos mode hit tracking
   const chaosHitCountRef        = useRef(0);
@@ -606,7 +608,7 @@ export function RecordingScreen() {
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        padding: '16px 24px',
+        padding: compact ? '10px 12px' : '16px 24px',
         overflow: 'hidden',
       }}
     >
@@ -776,15 +778,17 @@ export function RecordingScreen() {
           flex: '1 1 0',
           minHeight: 0,
           display: 'flex',
-          flexDirection: 'row',
+          flexDirection: compact ? 'column' : 'row',
           overflow: 'hidden',
+          gap: compact ? 0 : undefined,
         }}
       >
-        <RecordingSidebar />
+        <RecordingSidebar compact={compact} />
         <div
           style={{
-            flex: '1 1 0',
-            minHeight: 0,
+            flex: compact ? '1 1 auto' : '1 1 0',
+            minHeight: compact ? 'min(52dvh, 520px)' : 0,
+            order: compact ? 1 : undefined,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'auto',
@@ -906,7 +910,8 @@ export function RecordingScreen() {
                       fontSize: '1.15rem',
                       fontWeight: 700,
                       color: 'var(--text)',
-                      whiteSpace: 'nowrap',
+                      whiteSpace: compact ? 'normal' : 'nowrap',
+                      maxWidth: compact ? 'min(92vw, 360px)' : undefined,
                       textAlign: 'center',
                       boxShadow: `0 0 28px ${cursorColor}55`,
                       animation: 'hint-pulse-ring 2s ease-out infinite',
@@ -930,7 +935,9 @@ export function RecordingScreen() {
                       fontSize: '1rem',
                       color: 'var(--text)',
                       fontWeight: 700,
-                      whiteSpace: 'nowrap',
+                      whiteSpace: compact ? 'normal' : 'nowrap',
+                      maxWidth: compact ? 'min(92vw, 340px)' : undefined,
+                      textAlign: 'center',
                       pointerEvents: 'none',
                       animation: 'hint-fade 0.35s ease forwards',
                       boxShadow: `0 6px 24px ${cursorColor}33`,
@@ -1129,7 +1136,7 @@ export function RecordingScreen() {
                     position: 'absolute',
                     right: 8,
                     bottom: 8,
-                    zIndex: 3,
+                    zIndex: 45,
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 10,

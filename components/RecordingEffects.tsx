@@ -40,7 +40,7 @@ export function RecordingEffects({ gridRef, isActive, theme, color, cursorSizePx
   useEffect(() => {
     if (!isActive || !gridRef.current || theme === 'classic') return;
     const el = gridRef.current;
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       const rect = el.getBoundingClientRect();
       if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)
         return;
@@ -50,7 +50,10 @@ export function RecordingEffects({ gridRef, isActive, theme, color, cursorSizePx
       setTrail(trailRef.current);
     };
 
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
+      if (e.target instanceof Element && e.target.closest('button, a[href], input, textarea, select')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return;
+      if (e.pointerType !== 'mouse' && e.button !== 0) return;
       const rect = el.getBoundingClientRect();
       if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)
         return;
@@ -59,11 +62,11 @@ export function RecordingEffects({ gridRef, isActive, theme, color, cursorSizePx
       setBursts((b) => [...b, { x, y, t: Date.now() }].slice(-8));
     };
 
-    el.addEventListener('mousemove', onMove);
-    el.addEventListener('mousedown', onDown);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerdown', onDown);
     return () => {
-      el.removeEventListener('mousemove', onMove);
-      el.removeEventListener('mousedown', onDown);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerdown', onDown);
     };
   }, [isActive, theme, gridRef]);
 
