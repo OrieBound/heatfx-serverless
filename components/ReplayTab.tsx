@@ -30,6 +30,12 @@ interface ReplayTabProps {
 
 const SPEEDS = [0.5, 1, 1.5, 2] as const;
 
+function hasPosition(
+  e: RecordedEvent
+): e is RecordedEvent & { x: number; y: number } {
+  return 'x' in e && 'y' in e;
+}
+
 function octagonPoints(cx: number, cy: number, R: number): string {
   const pts: string[] = [];
   for (let k = 0; k < 8; k++) {
@@ -113,9 +119,13 @@ export function ReplayTab({ events, gridWidthPx, gridHeightPx, durationMs, sessi
   const currentEventIndex = events.findIndex((e) => e.t > currentTimeMs);
   const visibleIndex = currentEventIndex < 0 ? events.length - 1 : Math.max(0, currentEventIndex - 1);
   const currentPos = (() => {
-    const e = events[visibleIndex];
-    if (!e || !('x' in e)) return null;
-    return { x: (e as { x: number; y: number }).x * scaleX, y: (e as { x: number; y: number }).y * scaleY };
+    for (let i = visibleIndex; i >= 0; i--) {
+      const e = events[i];
+      if (!e) continue;
+      if (!hasPosition(e)) continue;
+      return { x: e.x * scaleX, y: e.y * scaleY };
+    }
+    return null;
   })();
 
   useEffect(() => {
@@ -259,14 +269,14 @@ export function ReplayTab({ events, gridWidthPx, gridHeightPx, durationMs, sessi
               <circle
                 cx={currentPos.x}
                 cy={currentPos.y}
-                r={cursorSizePx}
+                r={effectiveCursorPx}
                 fill={cursorColor + '44'}
                 style={{ filter: 'blur(4px)' }}
               />
               <ReplayCursorShape
                 cx={currentPos.x}
                 cy={currentPos.y}
-                r={cursorSizePx / 2}
+                r={effectiveCursorPx / 2}
                 color={cursorColor}
                 shape={cursorShape}
               />

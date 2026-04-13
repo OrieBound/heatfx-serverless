@@ -1,127 +1,266 @@
-# HeatFX Terraform
+# HeatFX — Deploy with Terraform
 
-## Two separate roots (do not mix them)
+This guide is for someone who **cloned the repo from GitHub** and wants the app **running on AWS** with the static site on **CloudFront**, using **only Terraform** (no CloudFormation for this environment).
 
-| Directory | What it is | `terraform init` |
-|-----------|----------------|------------------|
-| **`infra/terraform/`** (this folder) | App stack (Cognito, API, CloudFront, …) | With **`backend.hcl`** after pipeline exists, or **`-backend=false`** for local state only |
-| **`infra/terraform/pipeline/`** | CI only (CodePipeline, CodeBuild, state bucket) | Plain **`terraform init`** — **no** `backend.hcl` (no S3 backend block here) |
+**Time:** first deploy is often **20–40 minutes** (CloudFront + pipeline propagation).
 
-If your shell is already in **`pipeline/`**, the app stack is one level up: **`cd ..`** (not `cd infra/terraform`).
+---
 
-### Golden path (Bash — safe to copy)
+## What you get
 
-**Easiest:** from anywhere inside the repo, use **`scripts/tf.sh`** so you never `cd` into the wrong folder:
+| Piece | Role |
+|--------|------|
+| **CloudFront + S3** | Public **Next.js** static site (`npm run build` → `out/`) |
+| **API Gateway HTTP API + Lambda** | REST-style API under `/api/...` |
+| **Cognito** | Sign-up / sign-in for the SPA |
+| **DynamoDB + S3** | Session index + recording payloads |
+
+---
+
+## Prerequisites
+
+Check these before you start:
+
+1. **AWS account** you control, with permissions to create IAM, Lambda, Cognito, S3, DynamoDB, API Gateway, CloudFront, CodeBuild, CodePipeline (if using CI).
+2. **[Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.5** on your machine.
+3. **[Node.js](https://nodejs.org/)** **20+** and **npm** (Lambda packaging + frontend build).
+4. **[AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)** installed and logged in, e.g.  
+   `aws sso login --profile your-profile`  
+   then `export AWS_PROFILE=your-profile` (or set `AWS_REGION` / default region; this project assumes **`us-east-1`** unless you change it consistently).
+5. **Git** and a **Bash** shell (**Git Bash** on Windows is fine). Terraform’s `-backend-config=...` is easier in Bash than in PowerShell (where you may need quotes around the flag).
+6. **GitHub:** for the **CI path** you need a repo AWS can pull from (your **fork** or your own copy) and a **[CodeStar connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections.html)** to GitHub.
+
+---
+
+## Two Terraform roots (important)
+
+| Directory | Purpose | State |
+|-----------|---------|--------|
+| **`infra/terraform/pipeline/`** | CodePipeline, CodeBuild, **S3 backend bucket** for the app | Local `terraform.tfstate` on your laptop |
+| **`infra/terraform/`** | **App**: Cognito, API, site bucket, CloudFront, … | **S3 remote state** (after pipeline exists) or local with `-backend=false` |
+
+Do **not** run Terraform from **`infra/`** alone — use **`infra/terraform/`** or **`infra/terraform/pipeline/`**.
+
+From the repo root, you can use:
 
 ```bash
-bash scripts/tf.sh pipeline init
-bash scripts/tf.sh pipeline apply -var-file=terraform.tfvars
-
-cd "$(git rev-parse --show-toplevel)/infra/terraform/api" && npm ci
-
-bash scripts/tf.sh app init -backend-config=backend.hcl
+bash scripts/tf.sh pipeline plan -var-file=terraform.tfvars
 bash scripts/tf.sh app plan -var-file=terraform.tfvars
-bash scripts/tf.sh app apply -var-file=terraform.tfvars
 ```
 
-**Manual:** anchor from the **git repo root** — do **not** run `cd infra/terraform/pipeline` when you are already in `infra/terraform` (that path does not exist there).
+---
+
+## Choose a path
+
+| Path | Best for |
+|------|-----------|
+| **A — CodePipeline + GitHub** | You want **git push → build → Terraform apply → site upload** automatically. |
+| **B — Laptop only (no CI)** | You are fine running **`terraform apply`** and **`npm run build`** + **`aws s3 sync`** yourself. |
+
+You can start with **B** and add **A** later.
+
+---
+
+## Path A — End-to-end with CodePipeline (recommended)
+
+### Step 1 — Clone the repository
 
 ```bash
-REPO="$(git rev-parse --show-toplevel)"
-echo "REPO=$REPO"   # sanity check
+git clone https://github.com/<YOUR_GITHUB_USER>/heatfx-serverless.git
+cd heatfx-serverless
 ```
 
-**1 — CI / state bucket** (`pipeline/` root):
+Use **your fork** (or a repo you own). The pipeline will pull **this** repo/branch from GitHub.
+
+### Step 2 — Create pipeline variables (local secrets)
 
 ```bash
-cd "$REPO/infra/terraform/pipeline"
+cd infra/terraform/pipeline
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Edit **`terraform.tfvars`** (this file is **gitignored** — never commit it):
+
+| Variable | What to put |
+|----------|-------------|
+| `aws_region` | e.g. `us-east-1` |
+| `environment` | e.g. `prod` |
+| `github_repository_id` | `YOUR_USER/heatfx-serverless` (must match the repo the pipeline clones) |
+| `github_branch` | e.g. `main` |
+| `use_existing_connection` | `true` if you already have a **GitHub** connection in AWS; then set `connection_arn` |
+| `connection_arn` | From **Developer Tools → Settings → Connections** (CodeStar / CodeConnections) |
+| `cognito_domain_prefix` | **Globally unique** prefix (lowercase, hyphens). Example: `heatfx-yourname-prod` |
+| `app_callback_urls` / `app_logout_urls` | Start with `http://localhost:3000/auth/callback` and `http://localhost:3000/`; you will add **HTTPS CloudFront URLs** after Step 7 |
+| `cors_allow_origins` | List including at least `http://localhost:3000` for local dev. For the **first** deploy you may use `["*"]` and **tighten** to your CloudFront `https://...` origin after you know the distribution domain (see Step 8) |
+
+If `use_existing_connection = false`, Terraform creates a **new** connection — you **must** open the AWS console and **complete the GitHub handshake** before the pipeline can pull source.
+
+### Step 3 — Deploy the pipeline stack
+
+```bash
 terraform init
 terraform apply -var-file=terraform.tfvars
 ```
 
-**2 — App stack** (`infra/terraform/` root — **not** `pipeline/`, **not** bare `infra/`):
+Save the **outputs** (state bucket name, lock table, pipeline name). You will use them for **`backend.hcl`** if you run the app stack from your laptop with remote state.
+
+### Step 4 — Authorize GitHub (if the connection is “Pending”)
+
+**AWS Console → Developer Tools → Settings → Connections** → your connection → **Update pending connection** → finish GitHub app install. Status must be **Available**.
+
+### Step 5 — Put the code on GitHub
+
+Push this clone to the **`github_repository_id`** / **`github_branch`** you configured. The pipeline only sees what is on GitHub.
+
+### Step 6 — Run the pipeline
+
+**CodePipeline** → pipeline named like **`heatfx-terraform-<environment>`** → **Release change** (or push a commit if the pipeline is triggered on push).
+
+The **Build** stage runs **`buildspec.terraform.yml`**: Terraform **init** (S3 backend) → **apply** → **`npm ci`** / **`npm run build`** → **`aws s3 sync`** → **CloudFront invalidation**.
+
+Open **CodeBuild → Build logs** if anything fails (IAM, Terraform errors, etc.).
+
+### Step 7 — First successful run: note CloudFront and API
+
+From AWS console or, if you configure **`backend.hcl`** (Step 9), from your laptop:
 
 ```bash
-cd "$REPO/infra/terraform/api"
-npm ci
-cd "$REPO/infra/terraform"
-# One-time: cp backend.hcl.example backend.hcl  # then fill from pipeline outputs
+cd infra/terraform
+terraform output cloudfront_domain_name
+terraform output http_api_url
+# … and other outputs for .env.local
+```
+
+### Step 8 — Lock down Cognito and CORS for production
+
+1. Add to **`app_callback_urls`** and **`app_logout_urls`**:  
+   `https://<YOUR_CLOUDFRONT_DOMAIN>/auth/callback` and `https://<YOUR_CLOUDFRONT_DOMAIN>/`
+2. Set **`cors_allow_origins`** to something like:
+   - `https://<YOUR_CLOUDFRONT_DOMAIN>`
+   - `http://localhost:3000` (optional, for local dev against prod API)
+3. Apply **both** roots so CI env vars stay in sync:
+   - `cd infra/terraform/pipeline && terraform apply -var-file=terraform.tfvars`
+   - Either run **`terraform apply`** locally in **`infra/terraform/`** with the same values, **or** push / **Release change** so CodeBuild applies the app stack again.
+
+### Step 9 — (Optional) Laptop + remote state for the app stack
+
+```bash
+cd infra/terraform
+cp backend.hcl.example backend.hcl
+# Fill bucket, dynamodb_table, key, region from pipeline outputs (see backend.hcl.example comments)
+
 terraform init -backend-config=backend.hcl
-terraform apply -var-file=terraform.tfvars
+# If you had local state first: add -migrate-state once
+
+terraform plan -var-file=terraform.tfvars
 ```
 
-If `terraform plan` says **no configuration files**, your current directory is wrong — run `pwd` and compare to the paths above.
+On **PowerShell**, quote the backend flag:  
+`terraform init "-backend-config=backend.hcl"`.
 
-This directory mirrors the **CloudFormation nested stacks** (data, auth, API, frontend) as Terraform modules. **CloudFormation under `../cloudformation/` is unchanged**; pick **one** IaC tool per environment.
+---
 
-## Layout
+## Path B — Deploy without CodePipeline
 
-| Module       | Path                 | Resources |
-|-------------|----------------------|-----------|
-| **data**    | `modules/data`       | S3 recordings bucket, DynamoDB sessions table |
-| **auth**    | `modules/auth`       | Cognito user pool, SPA client, hosted UI domain, `admins` group |
-| **frontend**| `modules/frontend`   | S3 site bucket, CloudFront + OAC, subpage rewrite function |
-| **api**     | `modules/api`        | HTTP API (JWT authorizer), Lambda, IAM for DynamoDB + S3 + Cognito admin |
+Use this if you only want Terraform from your machine and will publish **`out/`** yourself.
 
-Root `.tf` files wire modules together and zip the Lambda from **`api/`** (this repo copy of the HTTP API handler). **SAM / CloudFormation** still use **`../cloudformation/api/`** unchanged—when you change the handler, update **both** copies (or consolidate into a single shared package later).
-
-## Prerequisites
-
-- [Terraform](https://www.terraform.io/downloads) `>= 1.5` (or OpenTofu equivalent).
-- AWS credentials (e.g. `aws sso login --profile orie-prod`).
-- **Lambda dependencies installed** before `plan` / `apply`:
+### Step 1 — Clone and install Lambda dependencies
 
 ```bash
-cd infra/terraform/api && npm ci
+git clone https://github.com/<YOUR_GITHUB_USER>/heatfx-serverless.git
+cd heatfx-serverless
+cd infra/terraform/api && npm ci && cd ../../..
 ```
 
-If `node_modules` is missing, Terraform fails the `check` block with that message.
-
-## First-time setup
+### Step 2 — App variables
 
 ```bash
 cd infra/terraform
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars: cognito_domain_prefix, callback URLs, etc.
+```
 
-# Local state (no S3 backend yet):
+Edit **`terraform.tfvars`**: **`cognito_domain_prefix`**, callback/logout URLs (localhost is fine to start), **`cors_allow_origins`**.
+
+### Step 3 — Local state (simplest)
+
+```bash
 terraform init -backend=false
-terraform plan
-terraform apply
+terraform apply -var-file=terraform.tfvars
 ```
 
-If you use **remote state** (after deploying **`pipeline/`**), copy **`backend.hcl.example`** → **`backend.hcl`**, fill bucket and lock table from pipeline outputs (or use pipeline `terraform output`), then:
+### Step 4 — Build and publish the site
+
+From **repository root**:
 
 ```bash
-terraform init -backend-config=backend.hcl -migrate-state
+npm ci
+npm run build
 ```
 
-Use **Bash** or **Git Bash** for these commands. (PowerShell splits `=` in flags unless quoted—prefer Bash here.)
-
-After apply, use outputs for `.env.local` / CI: `http_api_url`, `user_pool_id`, `user_pool_client_id`, `cloudfront_domain_name`, bucket names, etc.
+Use **`terraform output`** for **`site_bucket_name`** and **`cloudfront_distribution_id`**, then:
 
 ```bash
-terraform output
+aws s3 sync out/ "s3://$(cd infra/terraform && terraform output -raw site_bucket_name)/" --delete
+aws cloudfront create-invalidation \
+  --distribution-id "$(cd infra/terraform && terraform output -raw cloudfront_distribution_id)" \
+  --paths "/*"
 ```
 
-## Backend
+### Step 5 — Point local dev at the deployed backend
 
-`backend.tf` defines an **S3** backend; attributes are supplied at **`terraform init`** (`-backend-config` or **`-backend=false`** for local-only). See **`backend.hcl.example`**.
+Copy **`.env.example`** → **`.env.local`** and set **`NEXT_PUBLIC_*`** from **`terraform output`** (API URL **without** a trailing slash, Cognito pool, client, hosted UI domain, redirect URI matching your dev port).
 
-## Cognito + CloudFront follow-up
+### Step 6 — Add CloudFront URLs to Cognito / CORS
 
-1. First apply can use localhost callback URLs (as in CloudFormation dev flow).
-2. Note **`cloudfront_domain_name`** from outputs.
-3. Add `https://<cloudfront>/auth/callback` and `https://<cloudfront>/` to **`app_callback_urls`** / **`app_logout_urls`**, set **`cors_allow_origins`** (e.g. CloudFront URL plus `http://localhost:3000` for local dev), and **`terraform apply`** again.
+Same idea as **Path A — Step 8**: after you know **`cloudfront_domain_name`**, update **`terraform.tfvars`** and run **`terraform apply`** again.
 
-## CI / pipeline (Terraform-only)
+---
 
-A separate root **`pipeline/`** provisions **CodePipeline + CodeBuild** that run repo root **`buildspec.terraform.yml`** (Terraform apply for this stack, then Next build + S3 sync + invalidation). See **[pipeline/README.md](pipeline/README.md)**. That path does **not** use **`buildspec.yml`** (CloudFormation).
+## Layout (modules)
+
+| Module | Path | Resources |
+|--------|------|-----------|
+| **data** | `modules/data` | Recordings bucket, DynamoDB sessions |
+| **auth** | `modules/auth` | Cognito pool, app client, hosted UI domain |
+| **frontend** | `modules/frontend` | Site bucket, CloudFront, OAC |
+| **api** | `modules/api` | HTTP API, Lambda, JWT authorizer |
+
+Lambda source: **`infra/terraform/api/`** (keep **`infra/cloudformation/api/`** in sync if you still use CloudFormation elsewhere).
+
+---
+
+## Troubleshooting
+
+| Symptom | What to check |
+|---------|----------------|
+| **No configuration files** | Current directory must be **`infra/terraform`** or **`infra/terraform/pipeline`**, not **`infra/`**. |
+| **State lock** | Another Terraform or CI run holds the lock; wait, or `terraform force-unlock <id>` only if no other run is active. |
+| **Build fails on `pipefail`** | Use latest **`buildspec.terraform.yml`** from the repo (POSIX `sh` / dash — no `set -o pipefail`). |
+| **CORS errors from browser** | **`cors_allow_origins`** must include the **exact** browser origin (e.g. `https://dxxxx.cloudfront.net` and/or `http://localhost:3000`). |
+| **Cognito redirect mismatch** | **`app_callback_urls`** / **`app_logout_urls`** must list every URL users hit (localhost + CloudFront HTTPS). |
+
+---
+
+## CI details
+
+Pipeline Terraform and CodeBuild env vars: **[pipeline/README.md](pipeline/README.md)**.
+
+---
 
 ## Tear down
 
+**App stack** (from **`infra/terraform/`** with the correct backend):
+
 ```bash
-terraform destroy
+terraform destroy -var-file=terraform.tfvars
 ```
 
-Empty S3 buckets if `destroy` fails on non-empty buckets (same as CloudFormation).
+Empty S3 buckets if destroy fails. **Pipeline stack** (from **`infra/terraform/pipeline/`**): `terraform destroy` after the app is gone or state migrated.
+
+---
+
+## Related
+
+- Repo root **[README.md](../../README.md)** — local dev, stack overview  
+- **[../README.md](../README.md)** — CloudFormation vs Terraform  
+- **Product / deploy narrative:** **[../../docs/SPEC.md](../../docs/SPEC.md)**

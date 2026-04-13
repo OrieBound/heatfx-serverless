@@ -19,6 +19,8 @@ import { useAuth } from '@/contexts/AuthContext';
 interface RecordingSidebarProps {
   children?: React.ReactNode;
   side?: 'left' | 'right';
+  /** Narrow viewport: full-width bar under the grid, scrollable. */
+  compact?: boolean;
 }
 
 const CURSOR_SHAPES: { value: CursorShape; label: string; emoji: string; hotkey: string }[] = [
@@ -55,7 +57,7 @@ const CHAOS_OBSTACLE_TYPES: { value: ChaosObstacleType; label: string; emoji: st
 ];
 
 
-export function RecordingSidebar({ children, side = 'left' }: RecordingSidebarProps) {
+export function RecordingSidebar({ children, side = 'left', compact = false }: RecordingSidebarProps) {
   const { user } = useAuth();
   const { color: cursorColor, setColor: setCursorColor, palette } = useCursorColor();
   const {
@@ -82,15 +84,18 @@ export function RecordingSidebar({ children, side = 'left' }: RecordingSidebarPr
   return (
     <aside
       style={{
-        width: 360,
+        width: compact ? '100%' : 360,
+        maxHeight: compact ? 'min(42vh, 380px)' : undefined,
         flexShrink: 0,
-        padding: 16,
+        order: compact ? 2 : undefined,
+        padding: compact ? 12 : 16,
         background: 'var(--surface)',
-        borderRight: side === 'left' ? '1px solid var(--border)' : 'none',
-        borderLeft: side === 'right' ? '1px solid var(--border)' : 'none',
+        borderRight: compact ? 'none' : side === 'left' ? '1px solid var(--border)' : 'none',
+        borderLeft: compact ? 'none' : side === 'right' ? '1px solid var(--border)' : 'none',
+        borderTop: compact ? '1px solid var(--border)' : 'none',
         display: 'flex',
         flexDirection: 'column',
-        gap: 20,
+        gap: compact ? 14 : 20,
         minHeight: 0,
         overflowY: 'auto',
         overflowX: 'hidden',
@@ -146,7 +151,15 @@ export function RecordingSidebar({ children, side = 'left' }: RecordingSidebarPr
           <strong style={{ color: 'var(--text)' }}>arrow keys on your keyboard</strong> (not on-screen buttons) to cycle colours while recording.
         </p>
         {/* 22 palette swatches – 11 per row, 2 rows */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(11, 24px)', gap: 5, marginBottom: 8 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: compact ? 'repeat(8, minmax(0, 28px))' : 'repeat(11, 24px)',
+            gap: compact ? 6 : 5,
+            marginBottom: 8,
+            maxWidth: '100%',
+          }}
+        >
           {palette.map((c) => (
             <button
               key={c}

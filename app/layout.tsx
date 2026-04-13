@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { CursorColorProvider } from '@/contexts/CursorColorContext';
 import { RecordingSettingsProvider } from '@/contexts/RecordingSettingsContext';
@@ -10,6 +10,12 @@ export const metadata: Metadata = {
   description: 'Record mouse interactions, view heatmaps and replays.',
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#0f0f12',
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -17,7 +23,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <body
+        className="app-body"
+        style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', height: '100vh', overflow: 'hidden' }}
+      >
         <AuthProvider>
           <CursorColorProvider>
             <RecordingSettingsProvider>

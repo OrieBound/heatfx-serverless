@@ -38,7 +38,7 @@ export default function WhyPage() {
     {
       icon: '🔓',
       title: 'Open source and self-deployable',
-      body: 'The full source code — CloudFormation templates (with Terraform planned as an alternative), Lambda handler, and Next.js frontend — is available on GitHub. Anyone can deploy their own instance into their own AWS account. The infrastructure is designed to be reusable: parameters, deploy scripts, and optional pipeline wiring get a complete independent stack running in minutes.',
+      body: 'The full source code — CloudFormation templates and a Terraform mirror under infra/terraform — Lambda handler, and Next.js frontend — is available on GitHub. Anyone can deploy their own instance into their own AWS account (pick one IaC tool per environment). The infrastructure is designed to be reusable: parameters, deploy scripts, and optional pipeline wiring get a complete independent stack running in minutes.',
     },
   ];
 

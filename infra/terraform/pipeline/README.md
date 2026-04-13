@@ -1,5 +1,7 @@
 # HeatFX Terraform CI pipeline (AWS only)
 
+**New to this repo?** Start with the full guide: **[../README.md](../README.md)** (clone → variables → CloudFront).
+
 This folder is a **separate Terraform root** from `../` (the app stack). Run all commands from **`infra/terraform/pipeline`**. To work on the **app** stack instead, **`cd ..`** to `infra/terraform` — do **not** use `cd infra/terraform` from here (that path does not exist). **`backend.hcl`** is only for the parent app root, not this folder.
 
 It creates:

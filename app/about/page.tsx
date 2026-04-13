@@ -47,7 +47,7 @@ export default function AboutPage() {
     { q: 'Do I need an account to use it?', a: 'No — recording and viewing results is completely free with no sign-up required. You only need an account if you want to save recordings and access them later.' },
     { q: 'How many recordings can I save?', a: 'Up to 20 recordings per account. Once you reach the limit, delete older ones to make room for new ones.' },
     { q: 'Why does the replay not look like a video?', a: 'HeatFX stores your mouse events (position + timestamp), not pixels. During replay, the cursor is re-drawn in real time from those events — crisp, scalable, and tiny in file size.' },
-    { q: 'Can I record on mobile or touch devices?', a: 'HeatFX is optimised for desktop mouse input. Touch events are not currently captured.' },
+    { q: 'Can I record on mobile or touch devices?', a: 'The recorder uses pointer events (mouse, touch, pen) on the grid. Narrow layouts stack the grid above settings. Keyboard shortcuts still assume a keyboard; fine control is easiest on desktop.' },
     { q: 'What does the heatmap actually show?', a: 'Every recorded position is plotted as a semi-transparent dot. Overlapping dots accumulate brightness and shift colour from cool (low) to warm (high), showing where your cursor spent the most time.' },
   ];
 

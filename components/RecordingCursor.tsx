@@ -49,7 +49,7 @@ export function RecordingCursor({
   useEffect(() => {
     if (!isActive || !gridRef.current) { setPos(null); return; }
     const el = gridRef.current;
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       const rect = el.getBoundingClientRect();
       if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
         setPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -58,11 +58,11 @@ export function RecordingCursor({
       }
     };
     const onLeave = () => setPos(null);
-    el.addEventListener('mousemove', onMove);
-    el.addEventListener('mouseleave', onLeave);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerleave', onLeave);
     return () => {
-      el.removeEventListener('mousemove', onMove);
-      el.removeEventListener('mouseleave', onLeave);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerleave', onLeave);
     };
   }, [isActive, gridRef]);
 

@@ -72,7 +72,7 @@ export function RecordingGrid({
   useEffect(() => {
     const el = gridRef.current;
     if (!el) return;
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       const rect = el.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top) / rect.height;
@@ -83,11 +83,11 @@ export function RecordingGrid({
       }
     };
     const onLeave = () => setCoords(null);
-    el.addEventListener('mousemove', onMove);
-    el.addEventListener('mouseleave', onLeave);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerleave', onLeave);
     return () => {
-      el.removeEventListener('mousemove', onMove);
-      el.removeEventListener('mouseleave', onLeave);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerleave', onLeave);
     };
   // gridRef is a stable ref object — adding it to deps is an anti-pattern
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,6 +116,7 @@ export function RecordingGrid({
             borderRadius: 8,
             position: 'relative',
             boxShadow: isRecording ? `0 0 20px ${accentColor}30` : undefined,
+            touchAction: 'none',
           }}
         >
         <GridBackground variant={gridBackground} />

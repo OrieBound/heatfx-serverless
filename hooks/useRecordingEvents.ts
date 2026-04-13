@@ -98,10 +98,24 @@ export function useRecordingEvents(
     };
 
     const onPointerMove = (ev: PointerEvent) => {
-      if (ev.pointerId !== activePointerIdRef.current) return;
       const rect = getRect();
       const { x, y } = normalize(ev.clientX, ev.clientY, rect);
       const now = Date.now();
+
+      // Preserve desktop-style hover capture when no pointer is actively held.
+      // Touch should not synthesize hover movement, but mouse/pen can.
+      if (activePointerIdRef.current === null) {
+        if (ev.pointerType === 'touch' || ev.buttons !== 0) return;
+        if (now - lastMoveTimeRef.current < MOVE_THROTTLE_MS) return;
+        const last = lastPosRef.current;
+        if (last && Math.hypot(x - last.x, y - last.y) < JITTER_THRESHOLD) return;
+        lastMoveTimeRef.current = now;
+        lastPosRef.current = { x, y };
+        push({ t: t(), type: 'move', x, y });
+        return;
+      }
+
+      if (ev.pointerId !== activePointerIdRef.current) return;
 
       if (ev.buttons !== 0 && dragStartRef.current) {
         const start = dragStartRef.current;
